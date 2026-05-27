@@ -1,0 +1,26 @@
+{
+  "name": "valorant-discord-bot",
+  "version": "1.0.0",
+  "description": "A Discord bot that displays Valorant player stats inspired by Tracker.gg",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "valorant",
+    "stats"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

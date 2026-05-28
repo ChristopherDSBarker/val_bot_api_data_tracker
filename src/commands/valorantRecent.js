@@ -39,9 +39,11 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    let deferred = false;
     try {
       // Defer the reply
       await interaction.deferReply();
+      deferred = true;
 
       const name = interaction.options.getString('name');
       const tag = interaction.options.getString('tag');
@@ -72,7 +74,7 @@ module.exports = {
       if (!recentMatches || recentMatches.length === 0) {
         const errorEmbed = embeds.createErrorEmbed(
           'No Matches Found',
-          `Could not find recent matches for **${name}#${tag}** in region **${region}**.`
+          `Could not find recent matches for **${name}#${tag}** in region **${region}**.\n\nMake sure the name and tag are correct.`
         );
         await interaction.editReply({ embeds: [errorEmbed] });
         return;
@@ -92,7 +94,11 @@ module.exports = {
         'An unexpected error occurred while fetching recent matches. Please try again later.'
       );
       try {
-        await interaction.editReply({ embeds: [errorEmbed] });
+        if (deferred) {
+          await interaction.editReply({ embeds: [errorEmbed] });
+        } else {
+          await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        }
       } catch (replyError) {
         console.error('[ERROR] Failed to send error reply:', replyError);
       }

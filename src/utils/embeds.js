@@ -29,15 +29,16 @@ function createProfileEmbed(playerData) {
     kastPercent = 0,
     winPercent = 0,
     topAgents = [],
+    matchesAnalyzed = 0,
     lastUpdated = new Date().toISOString(),
   } = playerData;
 
   const embed = new EmbedBuilder()
     .setColor(0xFF4655) // Valorant red
-    .setTitle(`${riotId} - Valorant Stats`)
+    .setTitle(`${riotId} - Recent Competitive Stats`)
     .setDescription(`**${formatters.formatRank(currentRank)}** • Region: ${region}`)
     .addFields(
-      { name: 'Account Info', value: `**Level:** ${level}\n**Record:** ${wins}W - ${losses}L`, inline: true },
+      { name: 'Account Info', value: `**Level:** ${level}\n**Recent Record:** ${wins}W - ${losses}L (${matchesAnalyzed} matches)`, inline: true },
       {
         name: 'Combat Stats',
         value: `**K/D:** ${formatters.formatKD(kills, deaths)}\n**K/D/A:** ${formatters.formatKDA(kills, deaths, assists)}\n**ADR:** ${formatters.formatADR(adrPerRound)}`,
@@ -50,11 +51,11 @@ function createProfileEmbed(playerData) {
       },
       {
         name: 'Additional',
-        value: `**KAST:** ${formatters.formatPercent(kastPercent)}\n**Peak Rank:** ${peakRank}\n**Top Agents:** ${topAgents.length > 0 ? topAgents.join(', ') : 'N/A'}`,
+        value: `**KAST:** ${formatters.formatPercent(kastPercent)}\n**Top Agents:** ${topAgents.length > 0 ? topAgents.join(', ') : 'N/A'}`,
         inline: true,
       }
     )
-    .setFooter({ text: `Last updated: ${new Date(lastUpdated).toLocaleString()} | Powered by HenrikDev API` });
+    .setFooter({ text: `Aggregated from recent HenrikDev matches, not full Tracker.gg season data | Last updated: ${new Date(lastUpdated).toLocaleString()}` });
 
   return embed;
 }

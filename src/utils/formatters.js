@@ -4,41 +4,41 @@
 
 /**
  * Format a ratio to 2 decimal places
- * @param {number} value
+ * @param {number|string} value
  * @returns {string}
  */
 function formatRatio(value) {
-  if (value === null || value === undefined) return 'N/A';
+  if (value === 'N/A' || value === null || value === undefined) return 'N/A';
   return parseFloat(value).toFixed(2);
 }
 
 /**
  * Format a percentage to 1 decimal place
- * @param {number} value
+ * @param {number|string} value
  * @returns {string}
  */
 function formatPercent(value) {
-  if (value === null || value === undefined) return 'N/A';
+  if (value === 'N/A' || value === null || value === undefined) return 'N/A';
   return parseFloat(value).toFixed(1) + '%';
 }
 
 /**
  * Format ACS (Average Combat Score)
- * @param {number} value
+ * @param {number|string} value
  * @returns {string}
  */
 function formatACS(value) {
-  if (value === null || value === undefined) return 'N/A';
+  if (value === 'N/A' || value === null || value === undefined) return 'N/A';
   return parseFloat(value).toFixed(1);
 }
 
 /**
  * Format ADR (Average Damage per Round)
- * @param {number} value
+ * @param {number|string} value
  * @returns {string}
  */
 function formatADR(value) {
-  if (value === null || value === undefined) return 'N/A';
+  if (value === 'N/A' || value === null || value === undefined) return 'N/A';
   return parseFloat(value).toFixed(1);
 }
 
@@ -93,13 +93,15 @@ function formatRank(rank) {
 
 /**
  * Format damage delta
- * @param {number} value - e.g., +5 or -3
+ * @param {number|string} value - e.g., +5 or -3
  * @returns {string}
  */
 function formatDamageAdjustment(value) {
-  if (value === null || value === undefined) return 'N/A';
-  const sign = value >= 0 ? '+' : '';
-  return sign + value;
+  if (value === 'N/A' || value === null || value === undefined) return 'N/A';
+  const num = Number(value);
+  if (isNaN(num)) return 'N/A';
+  const sign = num >= 0 ? '+' : '';
+  return sign + num;
 }
 
 /**

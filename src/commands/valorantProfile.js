@@ -39,9 +39,11 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    let deferred = false;
     try {
       // Defer the reply since the API call might take a moment
       await interaction.deferReply();
+      deferred = true;
 
       const name = interaction.options.getString('name');
       const tag = interaction.options.getString('tag');
@@ -72,7 +74,7 @@ module.exports = {
       if (!playerProfile) {
         const errorEmbed = embeds.createErrorEmbed(
           'Player Not Found',
-          `Could not find player **${name}#${tag}** in region **${region}**.`
+          `Could not find player **${name}#${tag}** in region **${region}**.\n\nMake sure the name and tag are correct.`
         );
         await interaction.editReply({ embeds: [errorEmbed] });
         return;
@@ -88,7 +90,11 @@ module.exports = {
         'An unexpected error occurred while fetching player stats. Please try again later.'
       );
       try {
-        await interaction.editReply({ embeds: [errorEmbed] });
+        if (deferred) {
+          await interaction.editReply({ embeds: [errorEmbed] });
+        } else {
+          await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        }
       } catch (replyError) {
         console.error('[ERROR] Failed to send error reply:', replyError);
       }

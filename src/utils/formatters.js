@@ -9,7 +9,9 @@
  */
 function formatRatio(value) {
   if (value === 'N/A' || value === null || value === undefined) return 'N/A';
-  return parseFloat(value).toFixed(2);
+  const num = parseFloat(value);
+  if (Number.isNaN(num)) return 'N/A';
+  return num.toFixed(2);
 }
 
 /**
@@ -19,7 +21,9 @@ function formatRatio(value) {
  */
 function formatPercent(value) {
   if (value === 'N/A' || value === null || value === undefined) return 'N/A';
-  return parseFloat(value).toFixed(1) + '%';
+  const num = parseFloat(value);
+  if (Number.isNaN(num)) return 'N/A';
+  return num.toFixed(1) + '%';
 }
 
 /**
@@ -29,7 +33,9 @@ function formatPercent(value) {
  */
 function formatACS(value) {
   if (value === 'N/A' || value === null || value === undefined) return 'N/A';
-  return parseFloat(value).toFixed(1);
+  const num = parseFloat(value);
+  if (Number.isNaN(num)) return 'N/A';
+  return num.toFixed(1);
 }
 
 /**
@@ -39,7 +45,22 @@ function formatACS(value) {
  */
 function formatADR(value) {
   if (value === 'N/A' || value === null || value === undefined) return 'N/A';
-  return parseFloat(value).toFixed(1);
+  const num = parseFloat(value);
+  if (Number.isNaN(num)) return 'N/A';
+  return num.toFixed(1);
+}
+
+/**
+ * Format KAST as a percentage, accepting either decimal or percent inputs.
+ * @param {number|string} value
+ * @returns {string}
+ */
+function formatKASTPercent(value) {
+  if (value === 'N/A' || value === null || value === undefined) return 'N/A';
+  const num = parseFloat(value);
+  if (Number.isNaN(num)) return 'N/A';
+  const percent = Math.abs(num) <= 1 ? num * 100 : num;
+  return percent.toFixed(1) + '%';
 }
 
 /**
@@ -119,6 +140,7 @@ module.exports = {
   formatPercent,
   formatACS,
   formatADR,
+  formatKASTPercent,
   formatKDA,
   formatKD,
   formatWinRate,

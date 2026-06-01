@@ -23,10 +23,10 @@ function createProfileEmbed(playerData) {
     deaths = 0,
     assists = 0,
     kdRatio = 0,
-    adrPerRound = 0,
-    acsPerRound = 0,
+    adrPerRound = null,
+    acsPerRound = null,
     headshotPercent = 0,
-    kastPercent = 0,
+    kastPercent = null,
     winPercent = 0,
     topAgents = [],
     matchesAnalyzed = 0,
@@ -51,7 +51,7 @@ function createProfileEmbed(playerData) {
       },
       {
         name: 'Additional',
-        value: `**KAST:** ${formatters.formatPercent(kastPercent)}\n**Top Agents:** ${topAgents.length > 0 ? topAgents.join(', ') : 'N/A'}`,
+        value: `**KAST:** ${formatters.formatKASTPercent(kastPercent)}\n**Top Agents:** ${topAgents.length > 0 ? topAgents.join(', ') : 'N/A'}`,
         inline: true,
       }
     )

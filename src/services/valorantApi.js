@@ -134,6 +134,80 @@ function safeNumber(value, fallback = 0) {
 }
 
 /**
+ * Safe number coercion for optional stats where missing should stay unavailable.
+ * @param {*} value
+ * @returns {number|null}
+ */
+function safeOptionalNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+/**
+ * Average numeric samples, or null when no grounded samples exist.
+ * @param {number[]} values
+ * @returns {number|null}
+ */
+function averageSamples(values) {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+/**
+ * Determine rounds played from HenrikDev match data.
+ * @param {object} match
+ * @returns {number|null}
+ */
+function getRoundsPlayed(match) {
+  const metadata = match?.metadata || {};
+  const metadataRounds = [
+    metadata.rounds_played,
+    metadata.rounds,
+  ];
+
+  for (const value of metadataRounds) {
+    const rounds = safeOptionalNumber(value);
+    if (rounds && rounds > 0) return rounds;
+  }
+
+  if (Array.isArray(match?.rounds) && match.rounds.length > 0) {
+    return match.rounds.length;
+  }
+
+  const redRounds = safeOptionalNumber(match?.teams?.red?.rounds_won);
+  const blueRounds = safeOptionalNumber(match?.teams?.blue?.rounds_won);
+  if (redRounds !== null && blueRounds !== null && redRounds + blueRounds > 0) {
+    return redRounds + blueRounds;
+  }
+
+  return null;
+}
+
+/**
+ * Get total damage made from known HenrikDev player fields.
+ * @param {object} player
+ * @returns {number|null}
+ */
+function getDamageMade(player) {
+  const stats = player?.stats || {};
+  const damage = player?.damage || {};
+  const candidates = [
+    player?.damage_made,
+    damage.made,
+    stats.damage_made,
+    stats.damage,
+  ];
+
+  for (const value of candidates) {
+    const totalDamage = safeOptionalNumber(value);
+    if (totalDamage !== null) return totalDamage;
+  }
+
+  return null;
+}
+
+/**
  * Find target player in a match's all_players array
  * @param {object} match - HenrikDev match object
  * @param {string} name - Player name (game_name)
@@ -210,6 +284,12 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
     assists = 0;
   let totalHeadshots = 0,
     totalShots = 0;
+  let totalScore = 0;
+  let totalDamage = 0;
+  let totalRounds = 0;
+  const acsSamples = [];
+  const adrSamples = [];
+  const kastSamples = [];
   const agents = {};
 
   if (!matches || !Array.isArray(matches)) {
@@ -226,6 +306,7 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
 
     const stats = player.stats || {};
     const isWin = player.team === 'Red' ? match.teams.red.has_won : match.teams.blue.has_won;
+    const roundsPlayed = getRoundsPlayed(match);
 
     if (isWin) {
       wins++;
@@ -248,6 +329,36 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
     totalHeadshots += hs;
     totalShots += hs + bs + ls;
 
+    const score = safeOptionalNumber(stats.score);
+    const damageMade = getDamageMade(player);
+    const directAcs = safeOptionalNumber(stats.acs);
+    const directAdr = safeOptionalNumber(stats.adr);
+    const directKast = safeOptionalNumber(stats.kast ?? player.kast);
+
+    if (roundsPlayed !== null) {
+      totalRounds += roundsPlayed;
+    }
+
+    if (score !== null) {
+      totalScore += score;
+    }
+
+    if (damageMade !== null) {
+      totalDamage += damageMade;
+    }
+
+    if (directAcs !== null) {
+      acsSamples.push(directAcs);
+    }
+
+    if (directAdr !== null) {
+      adrSamples.push(directAdr);
+    }
+
+    if (directKast !== null) {
+      kastSamples.push(directKast);
+    }
+
     // Track top agents
     const agent = player.character || 'Unknown';
     agents[agent] = (agents[agent] || 0) + 1;
@@ -265,6 +376,25 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
     .map((entry) => entry[0]);
 
   const matchesAnalyzed = wins + losses;
+  const directAcs = averageSamples(acsSamples);
+  const directAdr = averageSamples(adrSamples);
+  const directKast = averageSamples(kastSamples);
+
+  const acsPerRound = directAcs !== null
+    ? directAcs
+    : totalScore > 0 && totalRounds > 0
+      ? totalScore / totalRounds
+      : null;
+
+  const adrPerRound = directAdr !== null
+    ? directAdr
+    : totalDamage > 0 && totalRounds > 0
+      ? totalDamage / totalRounds
+      : null;
+
+  // KAST requires per-round kill/assist/survive/trade data.
+  // If HenrikDev does not expose those fields, we intentionally leave it as N/A.
+  const kastPercent = directKast !== null ? directKast : null;
 
   return {
     wins,
@@ -275,6 +405,9 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
     kdRatio: kdRatio.toFixed(2),
     headshotPercent: headshotPercent.toFixed(1),
     winPercent: winPercent.toFixed(1),
+    acsPerRound,
+    adrPerRound,
+    kastPercent,
     topAgents,
     matchesAnalyzed,
   };
@@ -348,7 +481,7 @@ async function getPlayerProfile(name, tag, region = 'na') {
     console.log(`[API] MMR history received: ${mmrHistory.length} entries`);
 
     // Fetch recent matches for stats aggregation
-    const matchesUrl = `https://api.henrikdev.xyz/valorant/v3/matches/${region}/${name}/${tag}?mode=competitive&size=20`;
+    const matchesUrl = `https://api.henrikdev.xyz/valorant/v3/matches/${region}/${name}/${tag}?mode=competitive&size=10`;
     console.log(`[API] GET matches endpoint for stats aggregation`);
 
     const matchesResponse = await axios.get(matchesUrl, {
@@ -528,10 +661,10 @@ function parseProfileResponse(accountData, mmrHistory = [], region, aggregatedSt
     deaths: stats.deaths || 0,
     assists: stats.assists || 0,
     kdRatio: stats.kdRatio || 0,
-    adrPerRound: 'N/A', // Not available in v3 matches endpoint
-    acsPerRound: 'N/A', // Not available in v3 matches endpoint
+    adrPerRound: stats.adrPerRound ?? null,
+    acsPerRound: stats.acsPerRound ?? null,
     headshotPercent: stats.headshotPercent || 0,
-    kastPercent: 'N/A', // Not available in v3 matches endpoint
+    kastPercent: stats.kastPercent ?? null,
     winPercent: stats.winPercent || 0,
     topAgents: stats.topAgents || [],
     damageAdjustment: 'N/A', // Not available in v3 matches endpoint

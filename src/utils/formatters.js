@@ -71,9 +71,13 @@ function formatKASTPercent(value) {
  * @returns {string}
  */
 function formatKDA(k, d, a) {
-  const kills = k || 0;
-  const deaths = d || 0;
-  const assists = a || 0;
+  if (k === 'N/A' || d === 'N/A' || a === 'N/A') return 'N/A';
+  if (k === null || d === null || a === null) return 'N/A';
+  if (k === undefined || d === undefined || a === undefined) return 'N/A';
+  const kills = Number(k);
+  const deaths = Number(d);
+  const assists = Number(a);
+  if (!Number.isFinite(kills) || !Number.isFinite(deaths) || !Number.isFinite(assists)) return 'N/A';
   return `${kills}/${deaths}/${assists}`;
 }
 

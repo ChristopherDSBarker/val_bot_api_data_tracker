@@ -11,6 +11,110 @@ function formatRRChange(value) {
   return num >= 0 ? `+${num}` : `${num}`;
 }
 
+function getRecentRRChanges(mmrHistory) {
+  if (!Array.isArray(mmrHistory)) return [];
+  return mmrHistory
+    .map((entry) => entry.rrChange ?? entry.rr_change)
+    .filter((value) => value !== null && value !== undefined)
+    .map(Number)
+    .filter(Number.isFinite)
+    .slice(0, 5);
+}
+
+function getRRPattern(rrChanges) {
+  const gains = rrChanges.filter((value) => value > 0);
+  const losses = rrChanges.filter((value) => value < 0).map(Math.abs);
+
+  if (gains.length === 0 && losses.length === 0) return 'N/A';
+  if (gains.length === 0) return 'harsh losses';
+  if (losses.length === 0) return 'favorable gains';
+
+  const avgWinGain = gains.reduce((sum, value) => sum + value, 0) / gains.length;
+  const avgLossPenalty = losses.reduce((sum, value) => sum + value, 0) / losses.length;
+
+  if (avgWinGain >= avgLossPenalty + 5) return 'favorable gains';
+  if (avgLossPenalty >= avgWinGain + 5) return 'harsh losses';
+  return 'balanced';
+}
+
+function getRoundDiff(recentMatches) {
+  if (!Array.isArray(recentMatches)) return null;
+  const diffs = recentMatches
+    .slice(0, 5)
+    .map((match) => {
+      const won = Number(match?.roundsWon);
+      const lost = Number(match?.roundsLost);
+      if (!Number.isFinite(won) || !Number.isFinite(lost)) return null;
+      return won - lost;
+    })
+    .filter((value) => value !== null);
+
+  if (diffs.length === 0) return null;
+  return diffs.reduce((sum, value) => sum + value, 0);
+}
+
+function joinSignalLabels(labels) {
+  if (labels.length <= 1) return labels.join('');
+  if (labels.length === 2) return labels.join(' and ');
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
+}
+
+function createMMRSignalValue(playerData, mmrHistory, recentMatches) {
+  const rrChanges = getRecentRRChanges(mmrHistory);
+  const rrPattern = getRRPattern(rrChanges);
+  const roundDiff = getRoundDiff(recentMatches);
+  const winPercent = Number(playerData.winPercent);
+  const hasRR = rrPattern !== 'N/A';
+  const hasResults = Number.isFinite(winPercent) && Number(playerData.matchesAnalyzed) > 0;
+  const hasRoundDiff = roundDiff !== null;
+
+  if (!hasRR && !hasResults && !hasRoundDiff && playerData.elo === null && !playerData.currentRank) {
+    return null;
+  }
+
+  const rrScore = rrPattern === 'favorable gains' ? 1 : rrPattern === 'harsh losses' ? -1 : 0;
+  const resultScore = hasResults ? (winPercent >= 60 ? 1 : winPercent <= 40 ? -1 : 0) : 0;
+  const roundScore = hasRoundDiff ? (roundDiff >= 15 ? 1 : roundDiff <= -15 ? -1 : 0) : 0;
+  const scores = [
+    hasRR ? rrScore : null,
+    hasResults ? resultScore : null,
+    hasRoundDiff ? roundScore : null,
+  ].filter((value) => value !== null);
+  const totalScore = scores.reduce((sum, value) => sum + value, 0);
+  const nonZeroScores = scores.filter((value) => value !== 0);
+  const allStrongPositive = nonZeroScores.length >= 3 && nonZeroScores.every((value) => value > 0);
+  const allStrongNegative = nonZeroScores.length >= 3 && nonZeroScores.every((value) => value < 0);
+
+  let read = 'Mixed / around visible rank';
+  if (allStrongPositive && totalScore >= 3) {
+    read = 'Likely above visible rank';
+  } else if (allStrongNegative && totalScore <= -3) {
+    read = 'Likely below visible rank';
+  } else if (totalScore >= 1) {
+    read = 'Slightly above visible rank';
+  } else if (totalScore <= -1) {
+    read = 'Slightly below visible rank';
+  }
+
+  const availableSignals = [
+    hasRR ? 'RR trend' : null,
+    hasResults ? 'recent results' : null,
+    hasRoundDiff ? 'round differential' : null,
+  ].filter(Boolean);
+  const confidenceLevel = availableSignals.length >= 2 ? 'Medium' : availableSignals.length === 1 ? 'Low' : 'N/A';
+  const confidenceReason = availableSignals.length > 0 ? `${joinSignalLabels(availableSignals)} available` : 'no recent signal data';
+  const visibleElo = playerData.elo !== null && playerData.elo !== undefined ? playerData.elo : 'N/A';
+  const visibleRank = playerData.currentRank || 'Unranked';
+
+  return [
+    `**Visible Elo:** ${visibleElo} (${visibleRank})`,
+    `**RR Pattern:** ${rrPattern}`,
+    `**Round Diff:** ${hasRoundDiff ? `${formatRRChange(roundDiff)} last ${Math.min(5, recentMatches.length)}` : 'N/A'}`,
+    `**Read:** ${read}`,
+    `**Confidence:** ${confidenceLevel} - ${confidenceReason}`,
+  ].join('\n');
+}
+
 /**
  * Create a profile embed from player stats, rank, RR history, and recent matches.
  * @param {object} playerData - merged player data
@@ -95,12 +199,13 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     });
   }
 
+  const matchesAvailable = Number(matchesAnalyzed) > 0;
   const combatValue = [
-    `**K/D:** ${formatters.formatKD(kills, deaths)}`,
-    `**K/D/A:** ${formatters.formatKDA(kills, deaths, assists)}`,
-    `**ACS:** ${formatters.formatACS(acsPerRound)}`,
-    `**ADR:** ${formatters.formatADR(adrPerRound)}`,
-    `**HS%:** ${formatters.formatPercent(headshotPercent)}`,
+    `**K/D:** ${matchesAvailable ? formatters.formatKD(kills, deaths) : 'N/A'}`,
+    `**K/D/A:** ${matchesAvailable ? formatters.formatKDA(kills, deaths, assists) : 'N/A'}`,
+    `**ACS:** ${matchesAvailable ? formatters.formatACS(acsPerRound) : 'N/A'}`,
+    `**ADR:** ${matchesAvailable ? formatters.formatADR(adrPerRound) : 'N/A'}`,
+    `**HS%:** ${matchesAvailable ? formatters.formatPercent(headshotPercent) : 'N/A'}`,
     `**KAST:** ${formatters.formatKASTPercent(kastPercent)}`,
   ];
 
@@ -114,10 +219,11 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     const matchPreview = recentMatches.slice(0, 3).map((match) => {
       const result = match.isWin ? 'W' : 'L';
       const score = `${match.roundsWon}-${match.roundsLost}`;
+      const map = match.map && match.map !== 'Unknown' ? ` | ${match.map}` : '';
       const agent = match.agent || 'Unknown';
       const stats = `${match.kills}/${match.deaths}/${match.assists}`;
       const acs = match.acsPerRound ? Math.round(match.acsPerRound) : 'N/A';
-      return `${result} ${score} | ${agent} | ${stats} | ${acs} ACS`;
+      return `${result} ${score}${map} | ${agent} | ${stats} | ${acs} ACS`;
     }).join('\n');
 
     if (matchPreview) {
@@ -130,12 +236,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   }
 
   if (Array.isArray(mmrHistory) && mmrHistory.length > 0) {
-    const rrChanges = mmrHistory
-      .map((entry) => entry.rrChange ?? entry.rr_change)
-      .filter((value) => value !== null && value !== undefined)
-      .map(Number)
-      .filter(Number.isFinite)
-      .slice(0, 5);
+    const rrChanges = getRecentRRChanges(mmrHistory);
 
     if (rrChanges.length > 0) {
       const netRR = rrChanges.reduce((sum, value) => sum + value, 0);
@@ -147,6 +248,15 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
         inline: false,
       });
     }
+  }
+
+  const mmrSignalValue = createMMRSignalValue(playerData, mmrHistory, recentMatches);
+  if (mmrSignalValue) {
+    embed.addFields({
+      name: 'MMR Signal',
+      value: mmrSignalValue,
+      inline: false,
+    });
   }
 
   const extraParts = [];
@@ -191,7 +301,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   } else if (accountData && !profileData && !mmrData) {
     footerText = 'HenrikDev account data only';
   }
-  footerText += '. Recent stats are recent competitive matches, not full Tracker.gg season totals.';
+  footerText += '. MMR Signal is an estimate from visible rank, RR trend, and recent results - not Riot hidden MMR. Recent stats are last 10 competitive matches, not full Tracker.gg season totals.';
 
   embed.setFooter({ text: footerText });
 

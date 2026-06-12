@@ -29,6 +29,28 @@ const MOCK_PROFILE = {
   winPercent: 52.3,
   topAgents: ['Veto', 'Jett', 'Raze'],
   damageAdjustment: 5,
+  matchesAnalyzed: 10,
+};
+
+/**
+ * Mock MMR data
+ */
+const MOCK_MMR = {
+  name: 'SongSiDiYa',
+  tag: 'NA1',
+  region: 'na',
+  platform: 'pc',
+  currentRank: 'Platinum 1',
+  currentTierId: 18,
+  currentRR: 75,
+  lastRRChange: 19,
+  elo: 1150,
+  gamesNeededForRating: 0,
+  leaderboardRank: null,
+  peakRank: 'Platinum 2',
+  peakSeason: 'e11a3',
+  seasonalCount: 0,
+  rawAvailable: true,
 };
 
 /**
@@ -111,6 +133,29 @@ const MOCK_RECENT_MATCHES = [
     matchDate: new Date(Date.now() - 18000000).toISOString(),
   },
 ];
+
+/**
+ * Mock MMR history data (RR changes)
+ */
+const MOCK_MMR_HISTORY = [
+  { rr_change: 22 },
+  { rr_change: -8 },
+  { rr_change: 18 },
+  { rr_change: -5 },
+  { rr_change: 25 },
+];
+
+/**
+ * Mock account data
+ */
+const MOCK_ACCOUNT = {
+  name: 'SongSiDiYa',
+  tag: 'NA1',
+  puuid: 'mock-puuid-123',
+  account_level: 263,
+  region: 'na',
+  card: { wide: 'https://media.valorantapi.com/playercards/wide/random.png' },
+};
 
 /**
  * Validate region input
@@ -247,6 +292,28 @@ function normalizeMatch(match, player) {
   const isWin = player.team === 'Red' ? match.teams.red.has_won : match.teams.blue.has_won;
   const roundsPlayed = metadata.rounds_played || 0;
 
+  // Extract actual team round scores (not total rounds)
+  const redRounds = safeNumber(match.teams?.red?.rounds_won, null);
+  const blueRounds = safeNumber(match.teams?.blue?.rounds_won, null);
+  
+  let roundsWon = 0;
+  let roundsLost = 0;
+  
+  // Use actual team scores if available, otherwise fall back to total rounds
+  if (redRounds !== null && blueRounds !== null) {
+    if (player.team === 'Red') {
+      roundsWon = redRounds;
+      roundsLost = blueRounds;
+    } else {
+      roundsWon = blueRounds;
+      roundsLost = redRounds;
+    }
+  } else {
+    // Fallback: use total rounds (only use win/loss status if team scores unavailable)
+    roundsWon = isWin ? roundsPlayed : 0;
+    roundsLost = isWin ? 0 : roundsPlayed;
+  }
+
   // Calculate totals
   const totalShots = safeNumber(stats.bodyshots, 0) + safeNumber(stats.headshots, 0) + safeNumber(stats.legshots, 0);
   const headshotPercent = totalShots > 0 ? (safeNumber(stats.headshots, 0) / totalShots) * 100 : 0;
@@ -254,8 +321,8 @@ function normalizeMatch(match, player) {
   return {
     agent: player.character || 'Unknown',
     map: metadata.map || 'Unknown',
-    roundsWon: isWin ? roundsPlayed : 0,
-    roundsLost: isWin ? 0 : roundsPlayed,
+    roundsWon,
+    roundsLost,
     isWin,
     kills: safeNumber(stats.kills, 0),
     deaths: safeNumber(stats.deaths, 0),
@@ -524,6 +591,155 @@ async function getPlayerProfile(name, tag, region = 'na') {
 }
 
 /**
+ * Get Valorant account data from HenrikDev.
+ * @param {string} name
+ * @param {string} tag
+ * @param {string} region
+ * @returns {Promise<object|null>}
+ */
+async function getPlayerAccount(name, tag, region = 'na') {
+  try {
+    if (!isValidRegion(region)) {
+      throw new Error(`Invalid region: ${region}. Valid regions: na, eu, br, latam, kr, jp, ap`);
+    }
+
+    const cacheKey = `account_${name.toLowerCase()}_${tag.toUpperCase()}_${region}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      console.log(`[CACHE HIT] Account for ${name}#${tag}`);
+      return cached;
+    }
+
+    if (process.env.USE_MOCK_DATA === 'true') {
+      console.log('[MOCK DATA] Returning mock account for', `${name}#${tag}`);
+      const mockData = { ...MOCK_ACCOUNT, name, tag, region };
+      cache.set(cacheKey, mockData);
+      return mockData;
+    }
+
+    const apiKey = process.env.HENRIK_API_KEY;
+    if (!apiKey) {
+      console.warn(
+        '[WARNING] No API key found. Set HENRIK_API_KEY in .env or enable USE_MOCK_DATA=true'
+      );
+      return null;
+    }
+
+    const encodedName = encodeURIComponent(name);
+    const encodedTag = encodeURIComponent(tag);
+    const url = `https://api.henrikdev.xyz/valorant/v1/account/${encodedName}/${encodedTag}`;
+    console.log(`[API] GET account endpoint for ${name}#${tag}`);
+
+    const response = await axios.get(url, {
+      headers: { Authorization: apiKey },
+      timeout: 10000,
+    });
+
+    if (!response.data || !response.data.data) {
+      throw new Error('Unexpected account API response format');
+    }
+
+    const accountData = {
+      name: response.data.data.name || name,
+      tag: response.data.data.tag || tag,
+      puuid: response.data.data.puuid || null,
+      account_level: response.data.data.account_level ?? null,
+      region,
+      card: response.data.data.card || null,
+      last_update: response.data.data.last_update || null,
+      rawAvailable: true,
+    };
+
+    cache.set(cacheKey, accountData);
+    console.log(`[API] Account parsed and cached for ${name}#${tag}`);
+    return accountData;
+  } catch (error) {
+    console.error('[ERROR] Failed to get player account:');
+    if (error.response) {
+      console.error(`  Status: ${error.response.status}`);
+      console.error(`  Message: ${error.response.statusText}`);
+    } else if (error.code === 'ECONNABORTED') {
+      console.error('  Timeout: request took longer than 10000ms');
+    } else {
+      console.error(`  Message: ${error.message}`);
+    }
+    return null;
+  }
+}
+
+/**
+ * Get recent MMR history from HenrikDev and normalize RR deltas.
+ * @param {string} name
+ * @param {string} tag
+ * @param {string} region
+ * @returns {Promise<array>}
+ */
+async function getMMRHistory(name, tag, region = 'na') {
+  try {
+    if (!isValidRegion(region)) {
+      throw new Error(`Invalid region: ${region}. Valid regions: na, eu, br, latam, kr, jp, ap`);
+    }
+
+    const cacheKey = `mmr_history_${name.toLowerCase()}_${tag.toUpperCase()}_${region}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      console.log(`[CACHE HIT] MMR history for ${name}#${tag}`);
+      return cached;
+    }
+
+    if (process.env.USE_MOCK_DATA === 'true') {
+      console.log('[MOCK DATA] Returning mock MMR history for', `${name}#${tag}`);
+      cache.set(cacheKey, MOCK_MMR_HISTORY);
+      return MOCK_MMR_HISTORY;
+    }
+
+    const apiKey = process.env.HENRIK_API_KEY;
+    if (!apiKey) {
+      console.warn(
+        '[WARNING] No API key found. Set HENRIK_API_KEY in .env or enable USE_MOCK_DATA=true'
+      );
+      return [];
+    }
+
+    const encodedName = encodeURIComponent(name);
+    const encodedTag = encodeURIComponent(tag);
+    const url = `https://api.henrikdev.xyz/valorant/v1/mmr-history/${region}/${encodedName}/${encodedTag}`;
+    console.log(`[API] GET mmr-history endpoint for ${name}#${tag}`);
+
+    const response = await axios.get(url, {
+      headers: { Authorization: apiKey },
+      timeout: 10000,
+    });
+
+    const history = Array.isArray(response.data?.data) ? response.data.data : [];
+    const normalizedHistory = history.map((entry) => ({
+      currentRank: entry.currenttierpatched || entry.tier?.name || null,
+      currentTierId: safeOptionalNumber(entry.currenttier ?? entry.tier?.tier),
+      rr: safeOptionalNumber(entry.ranking_in_tier ?? entry.rr),
+      rrChange: safeOptionalNumber(entry.mmr_change_to_last_game ?? entry.rr_change),
+      elo: safeOptionalNumber(entry.elo),
+      date: entry.date || entry.date_raw || null,
+      raw: entry,
+    }));
+
+    cache.set(cacheKey, normalizedHistory);
+    console.log(`[API] MMR history parsed and cached for ${name}#${tag}`);
+    return normalizedHistory;
+  } catch (error) {
+    console.error('[ERROR] Failed to get MMR history:');
+    if (error.response) {
+      console.error(`  Status: ${error.response.status}`);
+      console.error(`  Message: ${error.response.statusText}`);
+    } else if (error.code === 'ECONNABORTED') {
+      console.error('  Timeout: request took longer than 10000ms');
+    } else {
+      console.error(`  Message: ${error.message}`);
+    }
+    return [];
+  }
+}
+
+/**
  * Get recent matches from mock data or API
  * @param {string} name
  * @param {string} tag
@@ -682,9 +898,113 @@ function getCacheStats() {
   return cache.getStats();
 }
 
+/**
+ * Get player MMR data from HenrikDev v3 endpoint
+ * @param {string} name
+ * @param {string} tag
+ * @param {string} region
+ * @param {string} platform
+ * @returns {Promise<object>}
+ */
+async function getPlayerMMR(name, tag, region = 'na', platform = 'pc') {
+  try {
+    // Validate region
+    if (!isValidRegion(region)) {
+      throw new Error(`Invalid region: ${region}. Valid regions: na, eu, br, latam, kr, jp, ap`);
+    }
+
+    // Check cache
+    const cacheKey = `mmr_${name.toLowerCase()}_${tag.toUpperCase()}_${region}_${platform}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      console.log(`[CACHE HIT] MMR for ${name}#${tag}`);
+      return cached;
+    }
+
+    // Use mock data if enabled
+    if (process.env.USE_MOCK_DATA === 'true') {
+      console.log('[MOCK DATA] Returning mock MMR for', `${name}#${tag}`);
+      const mockData = { ...MOCK_MMR, name, tag, region, platform };
+      cache.set(cacheKey, mockData);
+      return mockData;
+    }
+
+    // Call real API
+    const apiKey = process.env.HENRIK_API_KEY;
+    if (!apiKey) {
+      console.warn(
+        '[WARNING] No API key found. Set HENRIK_API_KEY in .env or enable USE_MOCK_DATA=true'
+      );
+      return null;
+    }
+
+    // URL encode name and tag
+    const encodedName = encodeURIComponent(name);
+    const encodedTag = encodeURIComponent(tag);
+    const url = `https://api.henrikdev.xyz/valorant/v3/mmr/${region}/${platform}/${encodedName}/${encodedTag}`;
+    console.log(`[API] GET MMR v3 endpoint for ${name}#${tag}`);
+
+    const response = await axios.get(url, {
+      headers: { Authorization: apiKey },
+      timeout: 10000,
+    });
+
+    if (!response.data || !response.data.data) {
+      throw new Error('Unexpected MMR API response format');
+    }
+
+    const mmrData = response.data.data;
+    console.log(`[API] MMR response received: rank=${mmrData.current?.tier?.name || 'Unknown'}, rr=${mmrData.current?.rr || 'N/A'}`);
+
+    // Normalize and parse response
+    const normalizedMMR = {
+      name: mmrData.account?.name || name,
+      tag: mmrData.account?.tag || tag,
+      region,
+      platform,
+      currentRank: mmrData.current?.tier?.name || null,
+      currentTierId: mmrData.current?.tier?.tier || null,
+      currentRR: safeOptionalNumber(mmrData.current?.rr),
+      lastRRChange: safeOptionalNumber(mmrData.current?.last_change),
+      elo: safeOptionalNumber(mmrData.current?.elo),
+      gamesNeededForRating: safeOptionalNumber(mmrData.current?.games_needed_for_rating),
+      leaderboardRank: mmrData.current?.leaderboard_placement?.rank || null,
+      peakRank: mmrData.peak?.tier?.name || null,
+      peakSeason: mmrData.peak?.season?.short || null,
+      seasonalCount: mmrData.seasonal ? Object.keys(mmrData.seasonal).length : 0,
+      rawAvailable: true,
+    };
+
+    cache.set(cacheKey, normalizedMMR);
+    console.log(`[API] MMR parsed and cached for ${name}#${tag}`);
+    return normalizedMMR;
+  } catch (error) {
+    console.error('[ERROR] Failed to get player MMR:');
+    if (error.response) {
+      console.error(`  Status: ${error.response.status}`);
+      console.error(`  Message: ${error.response.statusText}`);
+      if (error.response.status === 401 || error.response.status === 403) {
+        console.error('  → API key issue (401/403)');
+      } else if (error.response.status === 404) {
+        console.error('  → Player not found (404)');
+      } else if (error.response.status === 429) {
+        console.error('  → Rate limited (429)');
+      }
+    } else if (error.code === 'ECONNABORTED') {
+      console.error(`  Timeout: request took longer than 10000ms`);
+    } else {
+      console.error(`  Message: ${error.message}`);
+    }
+    return null;
+  }
+}
+
 module.exports = {
+  getPlayerAccount,
   getPlayerProfile,
   getRecentMatches,
+  getPlayerMMR,
+  getMMRHistory,
   getCacheStats,
   isValidRegion,
 };

@@ -5,24 +5,45 @@
 const { EmbedBuilder } = require('discord.js');
 const formatters = require('./formatters');
 
+function formatRRChange(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return num >= 0 ? `+${num}` : `${num}`;
+}
+
 /**
- * Create a profile embed from player stats
- * @param {object} playerData
+ * Create a profile embed from player stats, rank, RR history, and recent matches.
+ * @param {object} playerData - merged player data
+ * @param {object} context - source data used for fallback/footer details
+ * @param {object} legacyMMRData - backward-compatible MMR argument
+ * @param {array} legacyRecentMatches - backward-compatible recent matches argument
  * @returns {EmbedBuilder}
  */
-function createProfileEmbed(playerData) {
+function createProfileEmbed(playerData, context = {}, legacyMMRData = null, legacyRecentMatches = null) {
+  const isContextBundle = Object.prototype.hasOwnProperty.call(context, 'profile')
+    || Object.prototype.hasOwnProperty.call(context, 'mmr')
+    || Object.prototype.hasOwnProperty.call(context, 'account')
+    || Object.prototype.hasOwnProperty.call(context, 'recentMatches');
+  const profileData = isContextBundle ? context.profile : context;
+  const mmrData = isContextBundle ? context.mmr : legacyMMRData;
+  const accountData = isContextBundle ? context.account : playerData.account || null;
+  const mmrHistory = isContextBundle ? context.mmrHistory || [] : playerData.mmrHistory || [];
+  const recentMatches = isContextBundle ? context.recentMatches || [] : legacyRecentMatches || [];
+
   const {
     riotId = 'N/A',
     region = 'N/A',
-    currentRank = 'Unranked',
-    peakRank = 'N/A',
     level = 'N/A',
+    currentRank = 'Unranked',
+    currentRR = null,
+    lastRRChange = null,
+    peakRank = 'N/A',
+    peakSeason = 'N/A',
     wins = 0,
     losses = 0,
     kills = 0,
     deaths = 0,
     assists = 0,
-    kdRatio = 0,
     adrPerRound = null,
     acsPerRound = null,
     headshotPercent = 0,
@@ -30,32 +51,149 @@ function createProfileEmbed(playerData) {
     winPercent = 0,
     topAgents = [],
     matchesAnalyzed = 0,
-    lastUpdated = new Date().toISOString(),
+    elo = null,
+    leaderboardRank = null,
+    gamesNeededForRating = null,
   } = playerData;
 
+  const descriptionParts = [currentRank || 'Unranked'];
+
+  if (currentRR !== null) {
+    descriptionParts.push(`${currentRR} RR`);
+  }
+
+  const lastChangeText = formatRRChange(lastRRChange);
+  if (lastChangeText !== null) {
+    descriptionParts.push(`${lastChangeText} RR last match`);
+  }
+
+  if (peakRank !== 'N/A' && peakRank !== null) {
+    descriptionParts.push(`Peak: ${peakRank}`);
+  }
+
   const embed = new EmbedBuilder()
-    .setColor(0xFF4655) // Valorant red
-    .setTitle(`${riotId} - Recent Competitive Stats`)
-    .setDescription(`**${formatters.formatRank(currentRank)}** • Region: ${region}`)
-    .addFields(
-      { name: 'Account Info', value: `**Level:** ${level}\n**Recent Record:** ${wins}W - ${losses}L (${matchesAnalyzed} matches)`, inline: true },
-      {
-        name: 'Combat Stats',
-        value: `**K/D:** ${formatters.formatKD(kills, deaths)}\n**K/D/A:** ${formatters.formatKDA(kills, deaths, assists)}\n**ADR:** ${formatters.formatADR(adrPerRound)}`,
-        inline: true,
-      },
-      {
-        name: 'Performance',
-        value: `**ACS:** ${formatters.formatACS(acsPerRound)}\n**HS%:** ${formatters.formatPercent(headshotPercent)}\n**Win%:** ${formatters.formatPercent(winPercent)}`,
-        inline: true,
-      },
-      {
-        name: 'Additional',
-        value: `**KAST:** ${formatters.formatKASTPercent(kastPercent)}\n**Top Agents:** ${topAgents.length > 0 ? topAgents.join(', ') : 'N/A'}`,
-        inline: true,
-      }
-    )
-    .setFooter({ text: `Aggregated from recent HenrikDev matches, not full Tracker.gg season data | Last updated: ${new Date(lastUpdated).toLocaleString()}` });
+    .setColor(0xFF4655)
+    .setTitle(`${riotId} - Valorant Profile`)
+    .setDescription(descriptionParts.join(' | '));
+
+  const cardImage = accountData?.card?.small || accountData?.card?.wide || accountData?.card?.large;
+  if (cardImage) {
+    embed.setThumbnail(cardImage);
+  }
+
+  if (matchesAnalyzed > 0) {
+    const recentValue = [
+      `**Record:** ${wins}W - ${losses}L (Last ${matchesAnalyzed})`,
+      `**Win%:** ${formatters.formatPercent(winPercent)}`,
+      `**Top Agents:** ${topAgents.length > 0 ? topAgents.join(', ') : 'N/A'}`,
+    ];
+
+    embed.addFields({
+      name: 'Recent Competitive',
+      value: recentValue.join('\n'),
+      inline: false,
+    });
+  }
+
+  const combatValue = [
+    `**K/D:** ${formatters.formatKD(kills, deaths)}`,
+    `**K/D/A:** ${formatters.formatKDA(kills, deaths, assists)}`,
+    `**ACS:** ${formatters.formatACS(acsPerRound)}`,
+    `**ADR:** ${formatters.formatADR(adrPerRound)}`,
+    `**HS%:** ${formatters.formatPercent(headshotPercent)}`,
+    `**KAST:** ${formatters.formatKASTPercent(kastPercent)}`,
+  ];
+
+  embed.addFields({
+    name: 'Combat',
+    value: combatValue.join('\n'),
+    inline: false,
+  });
+
+  if (Array.isArray(recentMatches) && recentMatches.length > 0) {
+    const matchPreview = recentMatches.slice(0, 3).map((match) => {
+      const result = match.isWin ? 'W' : 'L';
+      const score = `${match.roundsWon}-${match.roundsLost}`;
+      const agent = match.agent || 'Unknown';
+      const stats = `${match.kills}/${match.deaths}/${match.assists}`;
+      const acs = match.acsPerRound ? Math.round(match.acsPerRound) : 'N/A';
+      return `${result} ${score} | ${agent} | ${stats} | ${acs} ACS`;
+    }).join('\n');
+
+    if (matchPreview) {
+      embed.addFields({
+        name: 'Recent Matches',
+        value: matchPreview,
+        inline: false,
+      });
+    }
+  }
+
+  if (Array.isArray(mmrHistory) && mmrHistory.length > 0) {
+    const rrChanges = mmrHistory
+      .map((entry) => entry.rrChange ?? entry.rr_change)
+      .filter((value) => value !== null && value !== undefined)
+      .map(Number)
+      .filter(Number.isFinite)
+      .slice(0, 5);
+
+    if (rrChanges.length > 0) {
+      const netRR = rrChanges.reduce((sum, value) => sum + value, 0);
+      const trend = rrChanges.map(formatRRChange).join(' / ');
+
+      embed.addFields({
+        name: 'RR Trend',
+        value: `**Last ${rrChanges.length}:** ${trend}\n**Net:** ${formatRRChange(netRR)} RR`,
+        inline: false,
+      });
+    }
+  }
+
+  const extraParts = [];
+
+  if (level !== 'N/A') {
+    extraParts.push(`**Level:** ${level}`);
+  }
+
+  if (elo !== null) {
+    extraParts.push(`**Elo:** ${elo}`);
+  }
+
+  if (peakSeason !== 'N/A' && peakSeason !== null) {
+    extraParts.push(`**Peak Season:** ${peakSeason}`);
+  }
+
+  if (leaderboardRank !== null) {
+    extraParts.push(`**Leaderboard:** #${leaderboardRank}`);
+  }
+
+  if (gamesNeededForRating !== null && gamesNeededForRating > 0) {
+    extraParts.push(`**Placement Games Needed:** ${gamesNeededForRating}`);
+  }
+
+  if (region !== 'N/A') {
+    extraParts.push(`**Region:** ${String(region).toUpperCase()}`);
+  }
+
+  if (extraParts.length > 0) {
+    embed.addFields({
+      name: 'Extra',
+      value: extraParts.join('\n'),
+      inline: false,
+    });
+  }
+
+  let footerText = 'HenrikDev MMR v3 + recent match data';
+  if (!profileData && mmrData) {
+    footerText = 'HenrikDev MMR v3 (Recent match data unavailable)';
+  } else if (profileData && !mmrData) {
+    footerText = 'Recent HenrikDev matches (Rank data unavailable)';
+  } else if (accountData && !profileData && !mmrData) {
+    footerText = 'HenrikDev account data only';
+  }
+  footerText += '. Recent stats are recent competitive matches, not full Tracker.gg season totals.';
+
+  embed.setFooter({ text: footerText });
 
   return embed;
 }
@@ -76,20 +214,19 @@ function createMatchEmbed(matchData, matchIndex = 1) {
     kills = 0,
     deaths = 0,
     assists = 0,
-    kdRatio = 0,
     acsPerRound = 0,
     headshotPercent = 0,
     damageAdjustment = 0,
     matchDate = new Date().toISOString(),
   } = matchData;
 
-  const resultEmoji = isWin ? '✅ WIN' : '❌ LOSS';
+  const resultText = isWin ? 'WIN' : 'LOSS';
   const scoreDisplay = formatters.formatMatchScore(roundsWon, roundsLost);
 
-  const embed = new EmbedBuilder()
-    .setColor(isWin ? 0x0FBF3F : 0x8B4513) // Green for win, brown for loss
+  return new EmbedBuilder()
+    .setColor(isWin ? 0x0FBF3F : 0x8B4513)
     .setTitle(`Match ${matchIndex} - ${agent} on ${map}`)
-    .setDescription(`${resultEmoji} • Score: ${scoreDisplay}`)
+    .setDescription(`${resultText} - Score: ${scoreDisplay}`)
     .addFields(
       { name: 'Kills/Deaths/Assists', value: formatters.formatKDA(kills, deaths, assists), inline: true },
       { name: 'K/D Ratio', value: formatters.formatKD(kills, deaths), inline: true },
@@ -99,8 +236,6 @@ function createMatchEmbed(matchData, matchIndex = 1) {
       { name: 'Date', value: new Date(matchDate).toLocaleString(), inline: true }
     )
     .setFooter({ text: 'Match data from HenrikDev API' });
-
-  return embed;
 }
 
 /**
@@ -110,13 +245,11 @@ function createMatchEmbed(matchData, matchIndex = 1) {
  * @returns {EmbedBuilder}
  */
 function createRecentMatchesOverviewEmbed(riotId, matches = []) {
-  const embed = new EmbedBuilder()
-    .setColor(0xFF4655) // Valorant red
+  return new EmbedBuilder()
+    .setColor(0xFF4655)
     .setTitle(`${riotId} - Recent Matches`)
     .setDescription(`Last ${matches.length} matches`)
     .setFooter({ text: 'Powered by HenrikDev API' });
-
-  return embed;
 }
 
 /**
@@ -127,10 +260,69 @@ function createRecentMatchesOverviewEmbed(riotId, matches = []) {
  */
 function createErrorEmbed(title = 'Error', description = 'An error occurred while fetching data.') {
   return new EmbedBuilder()
-    .setColor(0xFF0000) // Red
+    .setColor(0xFF0000)
     .setTitle(title)
     .setDescription(description)
     .setFooter({ text: 'Please try again later or check your input.' });
+}
+
+/**
+ * Create an embed for Valorant ranked MMR.
+ * @param {object} mmrData
+ * @returns {EmbedBuilder}
+ */
+function createMMREmbed(mmrData) {
+  const {
+    name = 'Unknown',
+    tag = 'Unknown',
+    currentRank = 'N/A',
+    currentRR = null,
+    lastRRChange = null,
+    elo = null,
+    gamesNeededForRating = null,
+    leaderboardRank = null,
+    peakRank = 'N/A',
+    peakSeason = 'N/A',
+  } = mmrData;
+
+  const riotId = `${name}#${tag}`;
+  const currentRRText = currentRR !== null ? `${currentRR} / 100` : 'N/A';
+  const lastChangeText = lastRRChange !== null
+    ? `${formatRRChange(lastRRChange)} RR`
+    : 'N/A';
+
+  const embed = new EmbedBuilder()
+    .setColor(0xFF4655)
+    .setTitle(`${riotId} - Ranked MMR`)
+    .setDescription(`**${currentRank}** ranked status`)
+    .addFields(
+      {
+        name: 'Current Rank',
+        value: `**Rank:** ${currentRank}\n**RR:** ${currentRRText}\n**Last Change:** ${lastChangeText}`,
+        inline: false,
+      },
+      {
+        name: 'Peak',
+        value: `**Peak Rank:** ${peakRank}\n**Peak Season:** ${peakSeason}`,
+        inline: false,
+      }
+    );
+
+  const extraFields = [
+    `**Elo:** ${elo !== null ? elo : 'N/A'}`,
+    `**Leaderboard:** ${leaderboardRank !== null ? leaderboardRank : 'N/A'}`,
+    `**Games Needed:** ${gamesNeededForRating !== null ? gamesNeededForRating : 'N/A'}`,
+  ];
+
+  embed.addFields({
+    name: 'Extra',
+    value: extraFields.join('\n'),
+    inline: false,
+  });
+
+  embed.setFooter({ text: 'Data from HenrikDev MMR v3. Fields may be N/A when unavailable.' });
+
+  return embed;
 }
 
 module.exports = {
@@ -138,4 +330,5 @@ module.exports = {
   createMatchEmbed,
   createRecentMatchesOverviewEmbed,
   createErrorEmbed,
+  createMMREmbed,
 };

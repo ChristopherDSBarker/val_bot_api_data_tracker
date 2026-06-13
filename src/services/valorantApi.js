@@ -6,6 +6,8 @@ const axios = require('axios');
 const Cache = require('../utils/cache.js');
 
 const cache = new Cache(5); // 5 minute TTL
+const API_BASE_URL = 'https://api.henrikdev.xyz';
+const EXPERIMENTAL_TIMEOUT_MS = 4000;
 
 /**
  * Mock player profile data (Tracker.gg style reference)
@@ -25,10 +27,11 @@ const MOCK_PROFILE = {
   adrPerRound: 144.4,
   acsPerRound: 218.1,
   headshotPercent: 15.9,
-  kastPercent: 69.0,
+  kastPercent: null,
+  damageDeltaPerRound: null,
   winPercent: 52.3,
   topAgents: ['Veto', 'Jett', 'Raze'],
-  damageAdjustment: 5,
+  damageAdjustment: null,
   matchesAnalyzed: 10,
 };
 
@@ -189,6 +192,25 @@ function safeOptionalNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function firstOptionalNumber(...values) {
+  for (const value of values) {
+    const num = safeOptionalNumber(value);
+    if (num !== null) return num;
+  }
+
+  return null;
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const text = value.trim();
+    if (text.length > 0) return text;
+  }
+
+  return null;
+}
+
 /**
  * Average numeric samples, or null when no grounded samples exist.
  * @param {number[]} values
@@ -197,6 +219,381 @@ function safeOptionalNumber(value) {
 function averageSamples(values) {
   if (!Array.isArray(values) || values.length === 0) return null;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function isExperimentalValorantPipelineEnabled() {
+  return process.env.ENABLE_EXPERIMENTAL_VALORANT_PIPELINE === 'true';
+}
+
+function isValorantApiDebugEnabled() {
+  return process.env.DEBUG_VALORANT_API === 'true';
+}
+
+function logExperimentalFailure(label, error) {
+  const status = error?.response?.status || 'n/a';
+  const message = error?.message || 'unknown error';
+  console.warn(`[EXPERIMENTAL_VALORANT] ${label} failed status=${status} message=${message}`);
+}
+
+async function experimentalGet(label, url, apiKey) {
+  try {
+    const response = await axios.get(url, {
+      headers: { Authorization: apiKey },
+      timeout: EXPERIMENTAL_TIMEOUT_MS,
+    });
+    console.log(`[EXPERIMENTAL_VALORANT] ${label} ok`);
+    return response.data;
+  } catch (error) {
+    logExperimentalFailure(label, error);
+    return null;
+  }
+}
+
+function normalizeExperimentalAccount(data) {
+  const account = data?.data || data || {};
+  const rawCard = account.card || account.player_card || null;
+  const card = typeof rawCard === 'string' ? { small: rawCard } : rawCard;
+  const accountLevel = account.account_level ?? account.accountLevel ?? account.level ?? null;
+  const puuid = account.puuid || account.account?.puuid || null;
+
+  if (!puuid && !card && accountLevel === null) return null;
+
+  return {
+    name: account.name || account.gameName || account.game_name || account.account?.name || null,
+    tag: account.tag || account.tagLine || account.tagline || account.account?.tag || null,
+    puuid,
+    account_level: accountLevel,
+    card,
+  };
+}
+
+function normalizeExperimentalMMR(data) {
+  const mmr = data?.data || data;
+  if (!mmr) return null;
+
+  const normalized = {
+    currentRank: mmr.current?.tier?.name || null,
+    currentRR: safeOptionalNumber(mmr.current?.rr),
+    elo: safeOptionalNumber(mmr.current?.elo),
+    peakRank: mmr.peak?.tier?.name || null,
+  };
+
+  if (!normalized.currentRank) return null;
+  return normalized;
+}
+
+function getPayloadKeys(data) {
+  const value = Array.isArray(data) ? data : data?.data || data;
+  if (!value || typeof value !== 'object') return 'none';
+  return Object.keys(value).slice(0, 8).join(',') || 'none';
+}
+
+function keySummary(value) {
+  if (!value || typeof value !== 'object') return 'none';
+  return Object.keys(value).slice(0, 12).join(',') || 'none';
+}
+
+function extractExperimentalMatches(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.data?.matches)) return data.data.matches;
+  if (Array.isArray(data?.data?.items)) return data.data.items;
+  if (Array.isArray(data?.matches)) return data.matches;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
+function getDamageRelatedKeys(player) {
+  const keys = new Set();
+  const stats = player?.stats || {};
+  const damage = player?.damage || {};
+
+  for (const key of Object.keys(player || {})) {
+    if (key.toLowerCase().includes('damage')) keys.add(key);
+  }
+
+  for (const key of Object.keys(stats)) {
+    if (key.toLowerCase().includes('damage')) keys.add(`stats.${key}`);
+  }
+
+  for (const key of Object.keys(damage)) {
+    keys.add(`damage.${key}`);
+  }
+
+  return Array.from(keys).slice(0, 12).join(',') || 'none';
+}
+
+function logExperimentalV4Shape(label, data) {
+  if (!isValorantApiDebugEnabled() || data === null || data === undefined) return;
+
+  const root = data?.data ?? data;
+  const rootIsArray = Array.isArray(root);
+  const rootLength = rootIsArray ? root.length : 'n/a';
+  console.log(`[EXPERIMENTAL_VALORANT] ${label} root isArray=${rootIsArray} length=${rootLength} keys=${keySummary(root)}`);
+
+  if (Array.isArray(data?.data)) {
+    console.log(`[EXPERIMENTAL_VALORANT] ${label} data.data isArray=true length=${data.data.length}`);
+  } else if (data?.data && typeof data.data === 'object') {
+    console.log(`[EXPERIMENTAL_VALORANT] ${label} data.data isArray=false keys=${keySummary(data.data)}`);
+  }
+
+  const firstMatch = extractExperimentalMatches(data)[0];
+  if (!firstMatch || typeof firstMatch !== 'object') return;
+
+  console.log(`[EXPERIMENTAL_VALORANT] ${label} first keys=${keySummary(firstMatch)}`);
+  console.log(`[EXPERIMENTAL_VALORANT] ${label} metadata keys=${keySummary(firstMatch.metadata)}`);
+  console.log(`[EXPERIMENTAL_VALORANT] ${label} players keys=${keySummary(firstMatch.players)}`);
+  console.log(`[EXPERIMENTAL_VALORANT] ${label} teams keys=${keySummary(firstMatch.teams)}`);
+
+  const firstPlayer = getAllPlayers(firstMatch)[0];
+  if (!firstPlayer || typeof firstPlayer !== 'object') return;
+
+  console.log(`[EXPERIMENTAL_VALORANT] ${label} first player keys=${keySummary(firstPlayer)}`);
+  console.log(`[EXPERIMENTAL_VALORANT] ${label} stats keys=${keySummary(firstPlayer.stats)}`);
+  console.log(`[EXPERIMENTAL_VALORANT] ${label} damage keys=${getDamageRelatedKeys(firstPlayer)}`);
+}
+
+function isUsableNormalizedMatch(match) {
+  if (!match) return false;
+  const hasKda = match.kills !== null && match.deaths !== null && match.assists !== null;
+  const hasRounds = match.roundsPlayed !== null;
+  const hasScore = match.scoreProven === true;
+  const hasDamage = match.damageDealt !== null || match.damageReceived !== null;
+  return hasKda || hasRounds || hasScore || hasDamage;
+}
+
+function normalizeExperimentalMatches(data, name, tag, puuid) {
+  const rawMatches = extractExperimentalMatches(data).slice(0, 10);
+  const normalized = rawMatches
+    .map((match) => {
+      try {
+        if (!match || typeof match !== 'object') return null;
+        const player = findPlayerInMatch(match, name, tag, puuid);
+        if (!player) return null;
+        const normalizedMatch = normalizeMatch(match, player);
+        return isUsableNormalizedMatch(normalizedMatch) ? normalizedMatch : null;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+  if (normalized.length < 3) {
+    console.warn(
+      `[EXPERIMENTAL_VALORANT] v4-match rejected reason=insufficient-normalized-matches count=${normalized.length} keys=${getPayloadKeys(data)}`
+    );
+    return null;
+  }
+
+  return normalized;
+}
+
+async function getExperimentalValorantEnhancements({ region, name, tag, stableProfile = null, stableMMR = null, stableRecentMatches = [] }) {
+  if (!isExperimentalValorantPipelineEnabled()) return null;
+
+  try {
+    const apiKey = process.env.HENRIK_API_KEY;
+    if (!apiKey) return null;
+
+    const encodedName = encodeURIComponent(name);
+    const encodedTag = encodeURIComponent(tag);
+    const enhancements = {
+      account: null,
+      mmr: null,
+      matches: null,
+      storedMatches: null,
+      damageDelta: null,
+      used: [],
+      rejected: [],
+    };
+
+    const accountData = await experimentalGet(
+      'account-v2',
+      `${API_BASE_URL}/valorant/v2/account/${encodedName}/${encodedTag}`,
+      apiKey
+    );
+    enhancements.account = normalizeExperimentalAccount(accountData);
+    const puuid = enhancements.account?.puuid || null;
+
+    if (puuid) {
+      const encodedPuuid = encodeURIComponent(puuid);
+      const puuidMmrData = await experimentalGet(
+        'mmr-v3-puuid',
+        `${API_BASE_URL}/valorant/v3/by-puuid/mmr/${region}/pc/${encodedPuuid}`,
+        apiKey
+      );
+      enhancements.mmr = normalizeExperimentalMMR(puuidMmrData);
+      if (enhancements.mmr && stableMMR?.currentRank && enhancements.mmr.currentRank !== stableMMR.currentRank) {
+        enhancements.rejected.push('mmr-v3-puuid-rank-mismatch');
+        enhancements.mmr = null;
+      }
+    }
+
+    const v4Candidates = [];
+    if (puuid) {
+      v4Candidates.push({
+        label: 'v4-match-puuid',
+        url: `${API_BASE_URL}/valorant/v4/by-puuid/matches/${region}/pc/${encodeURIComponent(puuid)}?mode=competitive&size=10`,
+      });
+    }
+    v4Candidates.push({
+      label: 'v4-match-riot-id',
+      url: `${API_BASE_URL}/valorant/v4/matches/${region}/pc/${encodedName}/${encodedTag}?mode=competitive&size=10`,
+    });
+
+    for (const candidate of v4Candidates) {
+      const data = await experimentalGet(candidate.label, candidate.url, apiKey);
+      logExperimentalV4Shape(candidate.label, data);
+      const matches = normalizeExperimentalMatches(data, name, tag, puuid);
+      if (matches) {
+        enhancements.matches = matches;
+        enhancements.damageDelta = summarizeDamageDeltaFromNormalizedMatches(matches, candidate.label);
+        enhancements.used.push(candidate.label);
+        console.log(`[EXPERIMENTAL_VALORANT] ${candidate.label} accepted count=${matches.length}`);
+        break;
+      }
+      enhancements.rejected.push(candidate.label);
+    }
+
+    const stableHasMatches = Array.isArray(stableRecentMatches) && stableRecentMatches.length > 0;
+    if (!stableHasMatches && !enhancements.matches) {
+      const storedData = await experimentalGet(
+        'stored-match-riot-id',
+        `${API_BASE_URL}/valorant/v1/stored-matches/${region}/${encodedName}/${encodedTag}?mode=competitive&size=10`,
+        apiKey
+      );
+      const storedMatches = normalizeExperimentalMatches(storedData, name, tag, puuid);
+      if (storedMatches) {
+        enhancements.storedMatches = storedMatches.map((match) => ({ ...match, dataSource: 'Stored fallback' }));
+        enhancements.damageDelta = summarizeDamageDeltaFromNormalizedMatches(enhancements.storedMatches, 'stored-match-riot-id');
+        enhancements.used.push('stored-match-riot-id');
+      } else {
+        enhancements.rejected.push('stored-match-riot-id');
+      }
+    }
+
+    console.log(
+      `[EXPERIMENTAL_VALORANT] sidecar complete used=${enhancements.used.join(',') || 'none'} rejected=${enhancements.rejected.join(',') || 'none'} stableProfile=${Boolean(stableProfile)}`
+    );
+    return enhancements;
+  } catch (error) {
+    logExperimentalFailure('sidecar', error);
+    return null;
+  }
+}
+
+function getAllPlayers(match) {
+  const players = match?.players;
+
+  if (Array.isArray(players)) return players;
+
+  if (Array.isArray(players?.all_players)) return players.all_players;
+  if (Array.isArray(players?.all)) return players.all;
+  if (Array.isArray(players?.players)) return players.players;
+
+  if (Array.isArray(players?.red) || Array.isArray(players?.blue)) {
+    return [
+      ...(Array.isArray(players.red) ? players.red : []),
+      ...(Array.isArray(players.blue) ? players.blue : []),
+    ];
+  }
+
+  return [];
+}
+
+function getPlayerTeam(player) {
+  return player?.team
+    || player?.team_id
+    || player?.teamId
+    || player?.team_name
+    || player?.teamName
+    || null;
+}
+
+function normalizeTeamKey(team) {
+  if (!team) return null;
+  return String(team).trim().toLowerCase();
+}
+
+function getTeamEntries(match) {
+  const teams = match?.teams;
+  if (!teams || typeof teams !== 'object') return [];
+
+  if (Array.isArray(teams)) {
+    return teams.map((team) => ({
+      key: normalizeTeamKey(team?.team_id || team?.teamId || team?.team || team?.name || team?.color),
+      team,
+    }));
+  }
+
+  return Object.entries(teams).map(([key, team]) => ({
+    key: normalizeTeamKey(team?.team_id || team?.teamId || team?.team || team?.name || team?.color || key),
+    team,
+  }));
+}
+
+function getTeamByKey(match, teamKey) {
+  const normalizedTeam = normalizeTeamKey(teamKey);
+  if (!normalizedTeam) return null;
+
+  const directTeam = match?.teams?.[teamKey] || match?.teams?.[normalizedTeam];
+  if (directTeam) return directTeam;
+
+  const entry = getTeamEntries(match).find(({ key }) => key === normalizedTeam);
+  return entry?.team || null;
+}
+
+function getOpponentTeamKey(match, teamKey) {
+  const normalizedTeam = normalizeTeamKey(teamKey);
+  if (!normalizedTeam) return null;
+
+  if (normalizedTeam === 'red') return 'blue';
+  if (normalizedTeam === 'blue') return 'red';
+
+  const entries = getTeamEntries(match).filter(({ key }) => key);
+  if (entries.length !== 2) return null;
+
+  const opponent = entries.find(({ key }) => key !== normalizedTeam);
+  return opponent?.key || null;
+}
+
+function getTeamRoundScore(match, teamKey) {
+  const team = getTeamByKey(match, teamKey);
+  if (!team) return null;
+
+  return firstOptionalNumber(
+    team.rounds_won,
+    team.roundsWon,
+    team.rounds?.won,
+    team.score
+  );
+}
+
+function getTeamWin(match, teamKey) {
+  const team = getTeamByKey(match, teamKey);
+  if (!team) return null;
+
+  const value = team.has_won ?? team.hasWon ?? team.won ?? team.is_winner ?? team.isWinner;
+  return typeof value === 'boolean' ? value : null;
+}
+
+function getMapName(metadata) {
+  return firstText(
+    metadata?.map?.name,
+    metadata?.map,
+    metadata?.map_name,
+    metadata?.mapName
+  );
+}
+
+function getAgentName(player) {
+  return firstText(
+    player?.character,
+    player?.agent?.name,
+    player?.agent,
+    player?.agent_name,
+    player?.agentName
+  );
 }
 
 /**
@@ -220,10 +617,18 @@ function getRoundsPlayed(match) {
     return match.rounds.length;
   }
 
-  const redRounds = safeOptionalNumber(match?.teams?.red?.rounds_won);
-  const blueRounds = safeOptionalNumber(match?.teams?.blue?.rounds_won);
-  if (redRounds !== null && blueRounds !== null && redRounds + blueRounds > 0) {
-    return redRounds + blueRounds;
+  const teamRounds = getTeamEntries(match)
+    .map(({ team }) => firstOptionalNumber(
+      team?.rounds_won,
+      team?.roundsWon,
+      team?.rounds?.won,
+      team?.score
+    ))
+    .filter((rounds) => rounds !== null);
+
+  if (teamRounds.length >= 2) {
+    const totalRounds = teamRounds.reduce((sum, rounds) => sum + rounds, 0);
+    if (totalRounds > 0) return totalRounds;
   }
 
   return null;
@@ -239,9 +644,47 @@ function getDamageMade(player) {
   const damage = player?.damage || {};
   const candidates = [
     player?.damage_made,
+    player?.damageMade,
+    player?.damage_made_total,
+    player?.damageMadeTotal,
     damage.made,
+    damage.damage_made,
     stats.damage_made,
+    stats.damageMade,
+    stats.damage_made_total,
+    stats.damageMadeTotal,
+    stats.damage?.made,
     stats.damage,
+  ];
+
+  for (const value of candidates) {
+    const totalDamage = safeOptionalNumber(value);
+    if (totalDamage !== null) return totalDamage;
+  }
+
+  return null;
+}
+
+/**
+ * Get total damage received from known HenrikDev player fields.
+ * @param {object} player
+ * @returns {number|null}
+ */
+function getDamageReceived(player) {
+  const stats = player?.stats || {};
+  const damage = player?.damage || {};
+  const candidates = [
+    player?.damage_received,
+    player?.damageReceived,
+    player?.damage_received_total,
+    player?.damageReceivedTotal,
+    damage.received,
+    damage.damage_received,
+    stats.damage_received,
+    stats.damageReceived,
+    stats.damage_received_total,
+    stats.damageReceivedTotal,
+    stats.damage?.received,
   ];
 
   for (const value of candidates) {
@@ -261,11 +704,10 @@ function getDamageMade(player) {
  * @returns {object|null}
  */
 function findPlayerInMatch(match, name, tag, puuid) {
-  if (!match.players || !match.players.all_players) {
+  const allPlayers = getAllPlayers(match);
+  if (allPlayers.length === 0) {
     return null;
   }
-
-  const allPlayers = match.players.all_players;
 
   // If puuid provided, use it (most reliable)
   if (puuid) {
@@ -274,7 +716,14 @@ function findPlayerInMatch(match, name, tag, puuid) {
   }
 
   // Fall back to name/tag matching
-  const byNameTag = allPlayers.find((p) => p.name === name && p.tag === tag);
+  const normalizedName = String(name).toLowerCase();
+  const normalizedTag = String(tag).toLowerCase();
+  const byNameTag = allPlayers.find((p) => {
+    const playerName = p.name || p.gameName || p.game_name || p.account?.name;
+    const playerTag = p.tag || p.tagLine || p.tagline || p.account?.tag;
+    return String(playerName).toLowerCase() === normalizedName
+      && String(playerTag).toLowerCase() === normalizedTag;
+  });
   return byNameTag || null;
 }
 
@@ -289,49 +738,65 @@ function normalizeMatch(match, player) {
 
   const metadata = match.metadata || {};
   const stats = player.stats || {};
-  const isWin = player.team === 'Red' ? match.teams.red.has_won : match.teams.blue.has_won;
-  const roundsPlayed = metadata.rounds_played || 0;
+  const playerTeam = getPlayerTeam(player);
+  const playerTeamKey = normalizeTeamKey(playerTeam);
+  const enemyTeamKey = getOpponentTeamKey(match, playerTeamKey);
+  const isWin = getTeamWin(match, playerTeamKey);
+  const roundsPlayed = getRoundsPlayed(match);
 
   // Extract actual team round scores (not total rounds)
-  const redRounds = safeNumber(match.teams?.red?.rounds_won, null);
-  const blueRounds = safeNumber(match.teams?.blue?.rounds_won, null);
-  
-  let roundsWon = 0;
-  let roundsLost = 0;
-  
-  // Use actual team scores if available, otherwise fall back to total rounds
-  if (redRounds !== null && blueRounds !== null) {
-    if (player.team === 'Red') {
-      roundsWon = redRounds;
-      roundsLost = blueRounds;
-    } else {
-      roundsWon = blueRounds;
-      roundsLost = redRounds;
-    }
-  } else {
-    // Fallback: use total rounds (only use win/loss status if team scores unavailable)
-    roundsWon = isWin ? roundsPlayed : 0;
-    roundsLost = isWin ? 0 : roundsPlayed;
-  }
+  const playerRounds = getTeamRoundScore(match, playerTeamKey);
+  const enemyRounds = enemyTeamKey ? getTeamRoundScore(match, enemyTeamKey) : null;
+  const scoreProven = playerRounds !== null && enemyRounds !== null;
+  const roundsWon = scoreProven ? playerRounds : null;
+  const roundsLost = scoreProven ? enemyRounds : null;
 
   // Calculate totals
-  const totalShots = safeNumber(stats.bodyshots, 0) + safeNumber(stats.headshots, 0) + safeNumber(stats.legshots, 0);
-  const headshotPercent = totalShots > 0 ? (safeNumber(stats.headshots, 0) / totalShots) * 100 : 0;
+  const headshots = safeOptionalNumber(stats.headshots ?? player.headshots) || 0;
+  const bodyshots = safeOptionalNumber(stats.bodyshots ?? player.bodyshots) || 0;
+  const legshots = safeOptionalNumber(stats.legshots ?? player.legshots) || 0;
+  const totalShots = bodyshots + headshots + legshots;
+  const headshotPercent = totalShots > 0 ? (headshots / totalShots) * 100 : null;
+  const kills = firstOptionalNumber(stats.kills, player.kills);
+  const deaths = firstOptionalNumber(stats.deaths, player.deaths);
+  const assists = firstOptionalNumber(stats.assists, player.assists);
+  const score = firstOptionalNumber(stats.score, player.score);
+  const directAcs = firstOptionalNumber(stats.acs, player.acs);
+  const directAdr = firstOptionalNumber(stats.adr, player.adr);
+  const damageMade = getDamageMade(player);
+  const damageReceived = getDamageReceived(player);
+  const acsPerRound = directAcs !== null
+    ? directAcs
+    : score !== null && roundsPlayed
+      ? score / roundsPlayed
+      : null;
+  const adrPerRound = directAdr !== null
+    ? directAdr
+    : damageMade !== null && roundsPlayed
+      ? damageMade / roundsPlayed
+      : null;
 
   return {
-    agent: player.character || 'Unknown',
-    map: metadata.map || 'Unknown',
+    agent: getAgentName(player),
+    map: getMapName(metadata),
     roundsWon,
     roundsLost,
     isWin,
-    kills: safeNumber(stats.kills, 0),
-    deaths: safeNumber(stats.deaths, 0),
-    assists: safeNumber(stats.assists, 0),
-    kdRatio: safeNumber(stats.deaths, 0) > 0 ? safeNumber(stats.kills, 0) / safeNumber(stats.deaths, 0) : safeNumber(stats.kills, 0),
-    acsPerRound: stats.score ? (safeNumber(stats.score, 0) / roundsPlayed).toFixed(1) : 'N/A',
-    headshotPercent: headshotPercent.toFixed(1),
-    damageAdjustment: 0, // Not available in v3 matches endpoint
-    matchDate: metadata.game_start_patched || new Date().toISOString(),
+    kills,
+    deaths,
+    assists,
+    kdRatio: kills !== null && deaths !== null ? (deaths > 0 ? kills / deaths : kills) : null,
+    acsPerRound,
+    adrPerRound,
+    headshotPercent,
+    damageDealt: damageMade,
+    damageReceived,
+    roundsPlayed,
+    damageAdjustment: null,
+    matchDate: firstText(metadata.game_start_patched, metadata.game_start, metadata.started_at, metadata.start_time)
+      || new Date().toISOString(),
+    scoreProven,
+    roundDiff: scoreProven ? roundsWon - roundsLost : null,
   };
 }
 
@@ -354,6 +819,11 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
   let totalScore = 0;
   let totalDamage = 0;
   let totalRounds = 0;
+  let matchesAnalyzed = 0;
+  let totalDamageDealtForDelta = 0;
+  let totalDamageReceivedForDelta = 0;
+  let totalRoundsForDelta = 0;
+  let damageDeltaCompleteMatches = 0;
   const acsSamples = [];
   const adrSamples = [];
   const kastSamples = [];
@@ -371,13 +841,14 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
       continue;
     }
 
+    matchesAnalyzed++;
     const stats = player.stats || {};
-    const isWin = player.team === 'Red' ? match.teams.red.has_won : match.teams.blue.has_won;
+    const isWin = getTeamWin(match, getPlayerTeam(player));
     const roundsPlayed = getRoundsPlayed(match);
 
-    if (isWin) {
+    if (isWin === true) {
       wins++;
-    } else {
+    } else if (isWin === false) {
       losses++;
     }
 
@@ -398,6 +869,7 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
 
     const score = safeOptionalNumber(stats.score);
     const damageMade = getDamageMade(player);
+    const damageReceived = getDamageReceived(player);
     const directAcs = safeOptionalNumber(stats.acs);
     const directAdr = safeOptionalNumber(stats.adr);
     const directKast = safeOptionalNumber(stats.kast ?? player.kast);
@@ -412,6 +884,13 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
 
     if (damageMade !== null) {
       totalDamage += damageMade;
+    }
+
+    if (damageMade !== null && damageReceived !== null && roundsPlayed !== null && roundsPlayed > 0) {
+      totalDamageDealtForDelta += damageMade;
+      totalDamageReceivedForDelta += damageReceived;
+      totalRoundsForDelta += roundsPlayed;
+      damageDeltaCompleteMatches++;
     }
 
     if (directAcs !== null) {
@@ -442,7 +921,6 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
     .slice(0, 3)
     .map((entry) => entry[0]);
 
-  const matchesAnalyzed = wins + losses;
   const directAcs = averageSamples(acsSamples);
   const directAdr = averageSamples(adrSamples);
   const directKast = averageSamples(kastSamples);
@@ -462,6 +940,12 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
   // KAST requires per-round kill/assist/survive/trade data.
   // If HenrikDev does not expose those fields, we intentionally leave it as N/A.
   const kastPercent = directKast !== null ? directKast : null;
+  const damageDeltaPerRound = damageDeltaCompleteMatches >= 3 && totalRoundsForDelta > 0
+    ? Math.round((totalDamageDealtForDelta - totalDamageReceivedForDelta) / totalRoundsForDelta)
+    : null;
+  const damageDeltaMissingReason = damageDeltaPerRound === null
+    ? `need 3 complete damage matches; found ${damageDeltaCompleteMatches}`
+    : null;
 
   return {
     wins,
@@ -475,8 +959,50 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
     acsPerRound,
     adrPerRound,
     kastPercent,
+    damageDeltaPerRound,
+    damageDeltaSource: damageDeltaPerRound !== null ? 'stable-v3' : null,
+    damageDeltaCompleteMatches,
+    damageDeltaMissingReason,
     topAgents,
     matchesAnalyzed,
+  };
+}
+
+function summarizeDamageDeltaFromNormalizedMatches(matches, source) {
+  let totalDamageDealt = 0;
+  let totalDamageReceived = 0;
+  let totalRounds = 0;
+  let completeMatches = 0;
+
+  for (const match of Array.isArray(matches) ? matches : []) {
+    const damageDealt = safeOptionalNumber(match?.damageDealt);
+    const damageReceived = safeOptionalNumber(match?.damageReceived);
+    const roundsPlayed = safeOptionalNumber(match?.roundsPlayed);
+
+    if (damageDealt === null || damageReceived === null || roundsPlayed === null || roundsPlayed <= 0) {
+      continue;
+    }
+
+    totalDamageDealt += damageDealt;
+    totalDamageReceived += damageReceived;
+    totalRounds += roundsPlayed;
+    completeMatches++;
+  }
+
+  if (completeMatches < 3 || totalRounds <= 0) {
+    return {
+      value: null,
+      source: null,
+      completeMatches,
+      missingReason: `need 3 complete damage matches; found ${completeMatches}`,
+    };
+  }
+
+  return {
+    value: Math.round((totalDamageDealt - totalDamageReceived) / totalRounds),
+    source,
+    completeMatches,
+    missingReason: null,
   };
 }
 
@@ -881,6 +1407,10 @@ function parseProfileResponse(accountData, mmrHistory = [], region, aggregatedSt
     acsPerRound: stats.acsPerRound ?? null,
     headshotPercent: stats.headshotPercent || 0,
     kastPercent: stats.kastPercent ?? null,
+    damageDeltaPerRound: stats.damageDeltaPerRound ?? null,
+    damageDeltaSource: stats.damageDeltaSource ?? null,
+    damageDeltaCompleteMatches: stats.damageDeltaCompleteMatches ?? 0,
+    damageDeltaMissingReason: stats.damageDeltaMissingReason ?? null,
     winPercent: stats.winPercent || 0,
     topAgents: stats.topAgents || [],
     damageAdjustment: 'N/A', // Not available in v3 matches endpoint
@@ -1006,5 +1536,7 @@ module.exports = {
   getPlayerMMR,
   getMMRHistory,
   getCacheStats,
+  getExperimentalValorantEnhancements,
+  isExperimentalValorantPipelineEnabled,
   isValidRegion,
 };

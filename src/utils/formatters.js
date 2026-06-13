@@ -130,6 +130,20 @@ function formatDamageAdjustment(value) {
 }
 
 /**
+ * Format damage delta per round.
+ * @param {number|string} value
+ * @returns {string}
+ */
+function formatDamageDelta(value) {
+  if (value === 'N/A' || value === null || value === undefined) return 'N/A';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 'N/A';
+  const rounded = Math.round(num);
+  const sign = rounded >= 0 ? '+' : '';
+  return `${sign}${rounded}`;
+}
+
+/**
  * Format match score as "13-7" or similar
  * @param {number} roundsWon
  * @param {number} roundsLost
@@ -150,5 +164,6 @@ module.exports = {
   formatWinRate,
   formatRank,
   formatDamageAdjustment,
+  formatDamageDelta,
   formatMatchScore,
 };

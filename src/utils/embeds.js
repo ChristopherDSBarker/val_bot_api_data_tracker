@@ -42,6 +42,8 @@ function getRoundDiff(recentMatches) {
   const diffs = recentMatches
     .slice(0, 5)
     .map((match) => {
+      if (match?.roundsWon === null || match?.roundsWon === undefined) return null;
+      if (match?.roundsLost === null || match?.roundsLost === undefined) return null;
       const won = Number(match?.roundsWon);
       const lost = Number(match?.roundsLost);
       if (!Number.isFinite(won) || !Number.isFinite(lost)) return null;
@@ -151,7 +153,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     adrPerRound = null,
     acsPerRound = null,
     headshotPercent = 0,
-    kastPercent = null,
+    damageDeltaPerRound = null,
     winPercent = 0,
     topAgents = [],
     matchesAnalyzed = 0,
@@ -205,8 +207,8 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     `**K/D/A:** ${matchesAvailable ? formatters.formatKDA(kills, deaths, assists) : 'N/A'}`,
     `**ACS:** ${matchesAvailable ? formatters.formatACS(acsPerRound) : 'N/A'}`,
     `**ADR:** ${matchesAvailable ? formatters.formatADR(adrPerRound) : 'N/A'}`,
+    `**DDΔ:** ${matchesAvailable ? formatters.formatDamageDelta(damageDeltaPerRound) : 'N/A'}`,
     `**HS%:** ${matchesAvailable ? formatters.formatPercent(headshotPercent) : 'N/A'}`,
-    `**KAST:** ${formatters.formatKASTPercent(kastPercent)}`,
   ];
 
   embed.addFields({
@@ -217,12 +219,18 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
 
   if (Array.isArray(recentMatches) && recentMatches.length > 0) {
     const matchPreview = recentMatches.slice(0, 3).map((match) => {
-      const result = match.isWin ? 'W' : 'L';
-      const score = `${match.roundsWon}-${match.roundsLost}`;
+      const result = match.isWin === true ? 'W' : match.isWin === false ? 'L' : 'N/A';
+      const hasScore = match.roundsWon !== null
+        && match.roundsWon !== undefined
+        && match.roundsLost !== null
+        && match.roundsLost !== undefined
+        && Number.isFinite(Number(match.roundsWon))
+        && Number.isFinite(Number(match.roundsLost));
+      const score = hasScore ? `${match.roundsWon}-${match.roundsLost}` : 'Score N/A';
       const map = match.map && match.map !== 'Unknown' ? ` | ${match.map}` : '';
       const agent = match.agent || 'Unknown';
-      const stats = `${match.kills}/${match.deaths}/${match.assists}`;
-      const acs = match.acsPerRound ? Math.round(match.acsPerRound) : 'N/A';
+      const stats = formatters.formatKDA(match.kills, match.deaths, match.assists);
+      const acs = formatters.formatACS(match.acsPerRound);
       return `${result} ${score}${map} | ${agent} | ${stats} | ${acs} ACS`;
     }).join('\n');
 

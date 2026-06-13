@@ -82,7 +82,25 @@ module.exports = {
       const playerProfile = profileResult.status === 'fulfilled' ? profileResult.value : null;
       const playerMMR = mmrResult.status === 'fulfilled' ? mmrResult.value : null;
       const mmrHistory = mmrHistoryResult.status === 'fulfilled' ? mmrHistoryResult.value : [];
-      const recentMatches = recentMatchesResult.status === 'fulfilled' ? recentMatchesResult.value : null;
+      const recentMatches = recentMatchesResult.status === 'fulfilled' && Array.isArray(recentMatchesResult.value)
+        ? recentMatchesResult.value
+        : [];
+
+      let experimentalEnhancements = null;
+      if (valorantApi.isExperimentalValorantPipelineEnabled()) {
+        try {
+          experimentalEnhancements = await valorantApi.getExperimentalValorantEnhancements({
+            region,
+            name,
+            tag,
+            stableProfile: playerProfile,
+            stableMMR: playerMMR,
+            stableRecentMatches: recentMatches,
+          });
+        } catch (error) {
+          console.warn(`[EXPERIMENTAL_VALORANT] sidecar ignored message=${error.message}`);
+        }
+      }
 
       // If both are missing, return error
       if (!account && !playerProfile && !playerMMR) {
@@ -106,6 +124,15 @@ module.exports = {
         tag: playerMMR?.tag || account?.tag || tag,
         level: account?.account_level || playerProfile?.level || 'N/A',
         region: playerProfile?.region || account?.region || region,
+        damageDeltaPerRound: playerProfile?.damageDeltaPerRound
+          ?? experimentalEnhancements?.damageDelta?.value
+          ?? null,
+        damageDeltaSource: playerProfile?.damageDeltaPerRound !== null && playerProfile?.damageDeltaPerRound !== undefined
+          ? playerProfile?.damageDeltaSource || 'stable-v3'
+          : experimentalEnhancements?.damageDelta?.source || null,
+        damageDeltaMissingReason: playerProfile?.damageDeltaPerRound !== null && playerProfile?.damageDeltaPerRound !== undefined
+          ? null
+          : playerProfile?.damageDeltaMissingReason || experimentalEnhancements?.damageDelta?.missingReason || null,
       };
 
       // Create and send the unified embed with recent match preview

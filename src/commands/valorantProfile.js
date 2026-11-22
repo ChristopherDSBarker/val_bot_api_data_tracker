@@ -5,6 +5,8 @@
 const { SlashCommandBuilder } = require('discord.js');
 const valorantApi = require('../services/valorantApi');
 const embeds = require('../utils/embeds');
+const { summarizeTeammates } = require('../services/teammateStats');
+const { summarizeMaps } = require('../services/valorantCareer');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -36,7 +38,9 @@ module.exports = {
           { name: 'Japan', value: 'jp' },
           { name: 'Asia-Pacific', value: 'ap' }
         )
-    ),
+    )
+    .addStringOption((option) => option.setName('friend')
+      .setDescription('Known friend to highlight, using their Riot ID (Name#TAG)').setMaxLength(60)),
 
   async execute(interaction) {
     let deferred = false;
@@ -48,6 +52,7 @@ module.exports = {
       const name = interaction.options.getString('name');
       const tag = interaction.options.getString('tag');
       const region = interaction.options.getString('region') || 'na';
+      const friend = interaction.options.getString('friend')?.trim();
 
       // Validate inputs
       if (!name || name.trim().length === 0) {
@@ -82,7 +87,7 @@ module.exports = {
       const playerProfile = profileResult.status === 'fulfilled' ? profileResult.value : null;
       const playerMMR = mmrResult.status === 'fulfilled' ? mmrResult.value : null;
       const mmrHistory = mmrHistoryResult.status === 'fulfilled' ? mmrHistoryResult.value : [];
-      const recentMatches = recentMatchesResult.status === 'fulfilled' && Array.isArray(recentMatchesResult.value)
+      let recentMatches = recentMatchesResult.status === 'fulfilled' && Array.isArray(recentMatchesResult.value)
         ? recentMatchesResult.value
         : [];
 
@@ -102,6 +107,13 @@ module.exports = {
         }
       }
 
+      // Valid v4 samples can enrich previews; failed beta calls leave stable results intact.
+      if (experimentalEnhancements?.matches?.length) {
+        recentMatches = experimentalEnhancements.matches;
+      } else if (!recentMatches.length && experimentalEnhancements?.storedMatches?.length) {
+        recentMatches = experimentalEnhancements.storedMatches;
+      }
+
       // If both are missing, return error
       if (!account && !playerProfile && !playerMMR) {
         const errorEmbed = embeds.createErrorEmbed(
@@ -118,6 +130,11 @@ module.exports = {
         ...playerMMR,
         account,
         mmrHistory,
+        career: experimentalEnhancements?.career || null,
+        mapSummary: summarizeMaps(recentMatches),
+        teammateSummary: summarizeTeammates(recentMatches, friend),
+        partySummary: summarizeTeammates(recentMatches, friend, { partyOnly: true }),
+        selectedFriend: friend,
         // Ensure we preserve profile-specific fields even if MMR is missing
         riotId: playerProfile?.riotId || `${account?.name || name}#${account?.tag || tag}`,
         name: playerMMR?.name || account?.name || name,
@@ -143,7 +160,7 @@ module.exports = {
         mmrHistory,
         recentMatches,
       });
-      await interaction.editReply({ embeds: [profileEmbed] });
+      await interaction.editReply({ embeds: [profileEmbed], allowedMentions: { parse: [] } });
     } catch (error) {
       console.error('[ERROR] Valorant profile command failed:', error);
       const errorEmbed = embeds.createErrorEmbed(

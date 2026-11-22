@@ -1,8 +1,10 @@
+const { tradesAfterDeath, sameParty } = require('./teammateStats');
 /**
  * Valorant API service - handles both real API and mock data
  */
 
-const axios = require('axios');
+const axios = require('./henrikClient');
+const { normalizeCareer, normalizeActAccolades, summarizeMaps } = require('./valorantCareer');
 const Cache = require('../utils/cache.js');
 
 const cache = new Cache(5); // 5 minute TTL
@@ -389,7 +391,7 @@ function normalizeExperimentalMatches(data, name, tag, puuid) {
 }
 
 async function getExperimentalValorantEnhancements({ region, name, tag, stableProfile = null, stableMMR = null, stableRecentMatches = [] }) {
-  if (!isExperimentalValorantPipelineEnabled()) return null;
+  if (!isExperimentalValorantPipelineEnabled() || process.env.USE_MOCK_DATA === 'true') return null;
 
   try {
     const apiKey = process.env.HENRIK_API_KEY;
@@ -403,9 +405,17 @@ async function getExperimentalValorantEnhancements({ region, name, tag, stablePr
       matches: null,
       storedMatches: null,
       damageDelta: null,
+      career: null,
+      mapSummary: [],
       used: [],
       rejected: [],
     };
+
+    const [accolades, mastery] = await Promise.all([
+      experimentalGet('accolades-v1', `${API_BASE_URL}/valorant/v1/accolades/${region}/pc/${encodedName}/${encodedTag}`, apiKey),
+      experimentalGet('mastery-v1', `${API_BASE_URL}/valorant/v1/agent-mastery/${region}/pc/${encodedName}/${encodedTag}`, apiKey),
+    ]);
+    enhancements.career = normalizeCareer(accolades?.data, mastery?.data);
 
     const accountData = await experimentalGet(
       'account-v2',
@@ -471,6 +481,12 @@ async function getExperimentalValorantEnhancements({ region, name, tag, stablePr
         enhancements.rejected.push('stored-match-riot-id');
       }
     }
+
+    const careerMatches = enhancements.matches || stableRecentMatches;
+    enhancements.mapSummary = summarizeMaps(careerMatches);
+    const latestMatch = careerMatches.filter((match) => Number.isFinite(Date.parse(match.startedAt)))
+      .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))[0];
+    enhancements.career.actAccolades = normalizeActAccolades(accolades?.data, latestMatch);
 
     console.log(
       `[EXPERIMENTAL_VALORANT] sidecar complete used=${enhancements.used.join(',') || 'none'} rejected=${enhancements.rejected.join(',') || 'none'} stableProfile=${Boolean(stableProfile)}`
@@ -653,6 +669,7 @@ function getDamageMade(player) {
     stats.damageMade,
     stats.damage_made_total,
     stats.damageMadeTotal,
+    stats.damage?.dealt,
     stats.damage?.made,
     stats.damage,
   ];
@@ -776,7 +793,47 @@ function normalizeMatch(match, player) {
       ? damageMade / roundsPlayed
       : null;
 
+  const roundResults = [];
+  if (playerTeamKey && enemyTeamKey && Array.isArray(match.rounds)) {
+    for (const round of match.rounds) {
+      const winner = normalizeTeamKey(round?.winning_team);
+      if (winner !== playerTeamKey && winner !== enemyTeamKey) continue;
+      const opener = normalizeTeamKey(round.first_blood?.team);
+      const won = winner === playerTeamKey;
+      const role = normalizeTeamKey(round.winning_team_role);
+      const winningSide = ['attack', 'attacker', 'attackers'].includes(role) ? 'attack'
+        : ['defend', 'defense', 'defender', 'defenders'].includes(role) ? 'defense' : null;
+      const side = !winningSide || won ? winningSide : winningSide === 'attack' ? 'defense' : 'attack';
+      const opened = opener === playerTeamKey ? true : opener === enemyTeamKey ? false : null;
+      roundResults.push({ won, opened, side });
+    }
+  }
+  const weaponKills = Object.create(null);
+  for (const event of Array.isArray(match.kills) ? match.kills : []) {
+    const name = firstText(event?.weapon?.name);
+    if (player.puuid && event?.killer?.puuid === player.puuid && ['weapon', 'gun'].includes(firstText(event?.weapon?.type)?.toLowerCase()) && name) {
+      weaponKills[name] = (weaponKills[name] || 0) + 1;
+    }
+  }
+  const tradeCredits = tradesAfterDeath(match, player.puuid);
   return {
+    matchId: firstText(metadata.match_id, metadata.matchid),
+    seasonId: firstText(metadata.season?.id),
+    seasonLabel: firstText(metadata.season?.short),
+    startedAt: firstText(metadata.started_at),
+    weaponKills,
+    roundResults,
+    creditsPerRound: roundsPlayed > 0 ? safeOptionalNumber(player.economy?.spent?.average) : null,
+    loadoutPerRound: roundsPlayed > 0 ? safeOptionalNumber(player.economy?.loadout_value?.average) : null,
+    teammates: playerTeamKey ? getAllPlayers(match)
+      .filter((other) => other && other !== player && normalizeTeamKey(getPlayerTeam(other)) === playerTeamKey)
+      .slice(0, 4)
+      .map((other) => ({ agent: getAgentName(other), name: firstText(other.name, other.game_name),
+        tag: firstText(other.tag, other.tag_line), puuid: other.puuid, sameParty: sameParty(player, other),
+        trades: tradeCredits && other.puuid ? (tradeCredits.get(other.puuid) ?? 0) : null, kills: safeOptionalNumber(other.stats?.kills),
+        deaths: safeOptionalNumber(other.stats?.deaths), assists: safeOptionalNumber(other.stats?.assists) })) : [],
+    performanceScore: safeOptionalNumber(player.performance?.score),
+    performanceGrade: player.performance?.ratings?.grade || null,
     agent: getAgentName(player),
     map: getMapName(metadata),
     roundsWon,
@@ -906,7 +963,7 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
     }
 
     // Track top agents
-    const agent = player.character || 'Unknown';
+    const agent = getAgentName(player);
     agents[agent] = (agents[agent] || 0) + 1;
   }
 
@@ -954,13 +1011,14 @@ function aggregateStatsFromMatches(matches, name, tag, puuid) {
     deaths,
     assists,
     kdRatio: kdRatio.toFixed(2),
-    headshotPercent: headshotPercent.toFixed(1),
+    headshotPercent: totalShots ? headshotPercent.toFixed(1) : null,
+    recordedHits: totalShots,
     winPercent: winPercent.toFixed(1),
     acsPerRound,
     adrPerRound,
     kastPercent,
     damageDeltaPerRound,
-    damageDeltaSource: damageDeltaPerRound !== null ? 'stable-v3' : null,
+    damageDeltaSource: damageDeltaPerRound !== null ? 'competitive-matches' : null,
     damageDeltaCompleteMatches,
     damageDeltaMissingReason,
     topAgents,
@@ -1013,6 +1071,25 @@ function summarizeDamageDeltaFromNormalizedMatches(matches, source) {
  * @param {string} region
  * @returns {Promise<object>}
  */
+async function getCompetitiveMatches(name, tag, region, apiKey) {
+  const suffix = `${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?mode=competitive&size=10`;
+  const options = { headers: { Authorization: apiKey }, timeout: 10000 };
+  if (isExperimentalValorantPipelineEnabled()) {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/valorant/v4/matches/${region}/pc/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?mode=competitive&size=10`, options);
+      const matches = response.data?.data;
+      if (!Array.isArray(matches) || matches.some((match) => !findPlayerInMatch(match, name, tag))) {
+        throw new Error('Unusable v4 match shape');
+      }
+      return response;
+    } catch (error) {
+      if ([401, 403, 429].includes(error.response?.status)) throw error;
+      logExperimentalFailure('v4-primary-falling-back-to-v3', error);
+    }
+  }
+  return axios.get(`${API_BASE_URL}/valorant/v3/matches/${suffix}`, options);
+}
+
 async function getPlayerProfile(name, tag, region = 'na') {
   try {
     // Validate region
@@ -1046,7 +1123,7 @@ async function getPlayerProfile(name, tag, region = 'na') {
     }
 
     // Fetch account info
-    const accountUrl = `https://api.henrikdev.xyz/valorant/v1/account/${name}/${tag}`;
+    const accountUrl = `https://api.henrikdev.xyz/valorant/v1/account/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`;
     console.log(`[API] GET account endpoint for ${name}#${tag}`);
 
     const accountResponse = await axios.get(accountUrl, {
@@ -1061,26 +1138,10 @@ async function getPlayerProfile(name, tag, region = 'na') {
     const accountData = accountResponse.data.data;
     console.log(`[API] Account response received: name=${accountData.name}, tag=${accountData.tag}, level=${accountData.account_level}`);
 
-    // Fetch MMR data
-    const mmrUrl = `https://api.henrikdev.xyz/valorant/v1/mmr-history/${region}/${name}/${tag}`;
-    console.log(`[API] GET mmr-history endpoint`);
-
-    const mmrResponse = await axios.get(mmrUrl, {
-      headers: { Authorization: apiKey },
-      timeout: 10000,
-    });
-
-    const mmrHistory = mmrResponse.data.data || [];
-    console.log(`[API] MMR history received: ${mmrHistory.length} entries`);
+    const mmrHistory = await getMMRHistory(name, tag, region);
 
     // Fetch recent matches for stats aggregation
-    const matchesUrl = `https://api.henrikdev.xyz/valorant/v3/matches/${region}/${name}/${tag}?mode=competitive&size=10`;
-    console.log(`[API] GET matches endpoint for stats aggregation`);
-
-    const matchesResponse = await axios.get(matchesUrl, {
-      headers: { Authorization: apiKey },
-      timeout: 10000,
-    });
+    const matchesResponse = await getCompetitiveMatches(name, tag, region, apiKey);
 
     const matches = matchesResponse.data.data || [];
     console.log(`[API] Matches response received: ${matches.length} matches available`);
@@ -1091,7 +1152,7 @@ async function getPlayerProfile(name, tag, region = 'na') {
     console.log(`[API] Stats aggregated: ${aggregatedStats?.wins || 0}W - ${aggregatedStats?.losses || 0}L`);
 
     // Parse combined response and cache it
-    const playerData = parseProfileResponse(accountData, mmrHistory, region, aggregatedStats);
+    const playerData = parseProfileResponse(accountData, mmrHistory.map((entry) => entry.raw || entry), region, aggregatedStats);
     cache.set(cacheKey, playerData);
     console.log(`[API] Profile parsed and cached for ${name}#${tag}`);
     return playerData;
@@ -1232,17 +1293,25 @@ async function getMMRHistory(name, tag, region = 'na') {
     const url = `https://api.henrikdev.xyz/valorant/v1/mmr-history/${region}/${encodedName}/${encodedTag}`;
     console.log(`[API] GET mmr-history endpoint for ${name}#${tag}`);
 
-    const response = await axios.get(url, {
-      headers: { Authorization: apiKey },
-      timeout: 10000,
-    });
+    let response;
+    try {
+      response = await axios.get(`${API_BASE_URL}/valorant/v2/mmr-history/${region}/pc/${encodedName}/${encodedTag}`, {
+        headers: { Authorization: apiKey }, timeout: 10000,
+      });
+      if (!Array.isArray(response.data?.data?.history)) throw new Error('Invalid v2 history shape');
+    } catch (error) {
+      if ([401, 403, 429].includes(error.response?.status)) throw error;
+      response = await axios.get(url, { headers: { Authorization: apiKey }, timeout: 10000 });
+    }
 
-    const history = Array.isArray(response.data?.data) ? response.data.data : [];
+    const history = response.data?.data?.history || (Array.isArray(response.data?.data) ? response.data.data : []);
     const normalizedHistory = history.map((entry) => ({
+      matchId: firstText(entry.match_id, entry.matchid),
+      performanceBonus: safeOptionalNumber(entry.rr_performance_bonus),
       currentRank: entry.currenttierpatched || entry.tier?.name || null,
       currentTierId: safeOptionalNumber(entry.currenttier ?? entry.tier?.tier),
       rr: safeOptionalNumber(entry.ranking_in_tier ?? entry.rr),
-      rrChange: safeOptionalNumber(entry.mmr_change_to_last_game ?? entry.rr_change),
+      rrChange: safeOptionalNumber(entry.last_change ?? entry.mmr_change_to_last_game ?? entry.rr_change),
       elo: safeOptionalNumber(entry.elo),
       date: entry.date || entry.date_raw || null,
       raw: entry,
@@ -1303,13 +1372,7 @@ async function getRecentMatches(name, tag, region = 'na') {
       return [];
     }
 
-    const url = `https://api.henrikdev.xyz/valorant/v3/matches/${region}/${name}/${tag}?mode=competitive&size=5`;
-    console.log(`[API] GET matches endpoint for ${name}#${tag}`);
-
-    const response = await axios.get(url, {
-      headers: { Authorization: apiKey },
-      timeout: 10000,
-    });
+    const response = await getCompetitiveMatches(name, tag, region, apiKey);
 
     if (!response.data || !response.data.data || !Array.isArray(response.data.data)) {
       throw new Error('Unexpected matches API response format');
@@ -1318,7 +1381,7 @@ async function getRecentMatches(name, tag, region = 'na') {
     console.log(`[API] Matches response received: status=${response.status}, count=${response.data.data.length}`);
 
     // Fetch account info for puuid lookup
-    const accountUrl = `https://api.henrikdev.xyz/valorant/v1/account/${name}/${tag}`;
+    const accountUrl = `https://api.henrikdev.xyz/valorant/v1/account/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`;
     const accountResponse = await axios.get(accountUrl, {
       headers: { Authorization: apiKey },
       timeout: 10000,
@@ -1378,15 +1441,10 @@ async function getRecentMatches(name, tag, region = 'na') {
 function parseProfileResponse(accountData, mmrHistory = [], region, aggregatedStats = null) {
   // Get current rank from most recent MMR entry
   const latestMMR = mmrHistory.length > 0 ? mmrHistory[0] : {};
-  const currentRank = latestMMR.currenttierpatched || 'Unranked';
+  const currentRank = latestMMR.currenttierpatched || latestMMR.tier?.name || 'Unranked';
 
-  // Get peak rank by finding the highest tier
-  let peakRank = 'N/A';
-  if (mmrHistory.length > 0) {
-    const highestTier = Math.max(...mmrHistory.map((m) => m.currenttier || 0));
-    const peakEntry = mmrHistory.find((m) => m.currenttier === highestTier);
-    peakRank = peakEntry?.currenttierpatched || 'N/A';
-  }
+  // Recent history cannot establish a career peak; only MMR v3 may supply it.
+  const peakRank = 'N/A';
 
   // Use aggregated stats if available
   const stats = aggregatedStats || {};
@@ -1405,7 +1463,8 @@ function parseProfileResponse(accountData, mmrHistory = [], region, aggregatedSt
     kdRatio: stats.kdRatio || 0,
     adrPerRound: stats.adrPerRound ?? null,
     acsPerRound: stats.acsPerRound ?? null,
-    headshotPercent: stats.headshotPercent || 0,
+    headshotPercent: stats.headshotPercent ?? null,
+    recordedHits: stats.recordedHits ?? null,
     kastPercent: stats.kastPercent ?? null,
     damageDeltaPerRound: stats.damageDeltaPerRound ?? null,
     damageDeltaSource: stats.damageDeltaSource ?? null,
@@ -1502,6 +1561,7 @@ async function getPlayerMMR(name, tag, region = 'na', platform = 'pc') {
       peakRank: mmrData.peak?.tier?.name || null,
       peakSeason: mmrData.peak?.season?.short || null,
       seasonalCount: mmrData.seasonal ? Object.keys(mmrData.seasonal).length : 0,
+      lifetimePrestige: mmrData.lifetime_prestige || null,
       rawAvailable: true,
     };
 

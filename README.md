@@ -1,158 +1,57 @@
-# Valorant Discord Bot
+# VALORANT Ranked Report for Discord
 
-A Discord Valorant profile bot built with Node.js, discord.js, and the HenrikDev API.
+Run `/valorant-profile` to see how your recent ranked games went, who you queued with, and which situations are worth reviewing. One card opens with a plain-English recap and gives you the match and round counts behind it.
 
-The bot provides one main player command:
+## Run the bot
 
-```text
-/valorant-profile
-```
-
-`/ping` is also available as a basic health check.
-
-## What It Shows
-
-`/valorant-profile` displays a Valorant profile card with:
-
-- rank, RR, and peak rank
-- recent competitive record
-- combat stats
-- recent matches
-- RR trend
-- MMR Signal
-- DDΔ
-- account level, region, and peak season
-
-## Install
+You'll need Node.js, a Discord bot invited to your server with slash command support, and a HenrikDev API key for live stats.
 
 ```bash
 npm install
+cp -n .env.example .env
 ```
 
-## Start Best Version
-
-Recommended:
+Fill in `.env` with your Discord bot token (`DISCORD_TOKEN`), application ID (`DISCORD_CLIENT_ID`), server ID (`DISCORD_GUILD_ID`), and HenrikDev key (`HENRIK_API_KEY`). Set `USE_MOCK_DATA=false` for live results. Keep `.env` private.
 
 ```bash
 ENABLE_EXPERIMENTAL_VALORANT_PIPELINE=true npm start
 ```
 
-This enables:
-
-- PUUID/v4 experimental sidecar
-- safer v4 match enrichment
-- DDΔ support when damage data is available
-- stable profile fallback if experimental data fails
-
-The stable `/valorant-profile` path remains the fallback. Experimental data should enrich the profile only when it is usable.
-
-## Emergency Stable-Only Fallback
-
-If experimental API calls cause rate limits or issues, run:
-
-```bash
-ENABLE_EXPERIMENTAL_VALORANT_PIPELINE=false npm start
-```
-
-or:
-
-```bash
-unset ENABLE_EXPERIMENTAL_VALORANT_PIPELINE
-npm start
-```
-
-Use stable-only mode for troubleshooting. The recommended startup command is still:
-
-```bash
-ENABLE_EXPERIMENTAL_VALORANT_PIPELINE=true npm start
-```
-
-## Environment Variables
-
-Create a `.env` file with the expected variable names. Do not commit real secrets.
-
-```env
-DISCORD_TOKEN=
-CLIENT_ID=
-GUILD_ID=
-HENRIK_API_KEY=
-USE_MOCK_DATA=false
-ENABLE_EXPERIMENTAL_VALORANT_PIPELINE=true
-DEBUG_VALORANT_API=false
-```
-
-Depending on your local setup, the bot may also expect Discord variable names with the `DISCORD_` prefix:
-
-```env
-DISCORD_CLIENT_ID=
-DISCORD_GUILD_ID=
-```
-
-## Discord Usage
-
-Main command:
+Try `/ping` to check that the bot responds. Then try:
 
 ```text
-/valorant-profile name:<riot-name> tag:<tag> region:<region>
-```
-
-Examples:
-
-```text
-/valorant-profile name:SiDi254 tag:NA1 region:na
 /valorant-profile name:SongSiDiYa tag:NA1 region:na
-/valorant-profile name:Lizzi NomNom tag:NA1 region:na
 ```
 
-Health check:
+Use the region where the player competes. Region defaults to `na`. Add `friend:Name#TAG` to highlight a player you know in that report. The bot registers commands in the server configured in `.env` when it starts.
 
-```text
-/ping
-```
+## Read the card
 
-## MMR Signal Disclaimer
+| Section | What it tells you |
+| --- | --- |
+| **At a glance** | Your current rank, Rank Rating (RR), career peak, wins in the recent sample, and net RR over the displayed updates. |
+| **Recent Competitive** | Up to ten completed matches with result, score, map, agent, kills/deaths/assists, Average Combat Score (ACS), Performance Score, and match-linked RR when available. |
+| **How Often Did Your Team Win the Round?** | Wins and known rounds on attack, on defense, and after either team got the first kill. A round can appear in both a side row and a first-kill row. |
+| **Competitive Maps** | Matches won, average Performance Score with its match count, and rounds won by side. These are observed map results. Riot's private Map Rating is a separate number. |
+| **How You Played Together** | One row per player. Party rows count confirmed games queued together. Team rows describe same-team results when there is no confirmed party record. A trade means a teammate killed your killer within five seconds in the same round. The trade denominator is games with usable kill records. |
+| **Career and Act Accolades** | Lifetime Rank Legacy counts, API mastery levels with cutoff ties, top lifetime accolades, and accolades for the act linked to the latest match when HenrikDev returns that act. |
+| **Sample Leaders and Economy** | Recent agent and party records, named gun kills, credits spent per round, and equipment value per round. Gun kill counts show logged results. The bot does not know time spent using each gun. |
+| **Compare Your Recent Games** | Compares the earlier and later five-match blocks in one act, matching by map, agent, and side. Each row needs ten known rounds per block. |
 
-MMR Signal is not Riot hidden MMR.
+**Reading a result:** `1/5 (20%)` means one win in five known results. A small sample can suggest a replay worth reviewing. It can't tell you that a teammate, agent, or purchase caused the outcome.
 
-It is an estimate from visible rank, RR trend, recent results, and round differential. The bot does not expose exact Riot hidden MMR.
+The card shows headshots as a share of **recorded hits**. It shows damage delta per round only when damage dealt, damage received, and round counts support the calculation. Dashes and “unavailable” indicate missing data.
 
-## DDΔ Disclaimer
+## Troubleshoot and test
 
-DDΔ means damage delta per round.
+- If commands are missing, check the configured application and server IDs and the bot's invite permissions.
+- If the API is rate-limited, give it time before retrying. The bot shares duplicate requests and respects a cooldown.
+- To troubleshoot with optional beta features disabled, run `ENABLE_EXPERIMENTAL_VALORANT_PIPELINE=false npm start`.
+- For a mock profile, set `USE_MOCK_DATA=true`. Discord credentials are still required for Discord login.
+- Run the local regression suite with `node --test tests/*.test.js`. The tests run without a Discord login.
 
-It is only shown as a number when damage dealt, damage received, and rounds are proven from HenrikDev data. Otherwise it shows `N/A`.
+## Data coverage
 
-The bot does not fake DDΔ.
+HenrikDev supplies the account, rank, RR history, matches, mastery, and accolade data. The bot uses match v4 with a v3 fallback and RR history v2 with a v1 fallback. HenrikDev's v4 match route caps each response at ten matches. The report reads one recent window and does not maintain longitudinal history.
 
-## Rate Limits
-
-HenrikDev may rate-limit during rapid testing.
-
-If you test many profiles quickly and see partial data, wait a few minutes and retry. Use stable-only fallback if needed.
-
-## Project Structure
-
-```text
-valorant-discord-bot/
-├── src/
-│   ├── index.js
-│   ├── commands/
-│   │   ├── ping.js
-│   │   └── valorantProfile.js
-│   ├── services/
-│   │   └── valorantApi.js
-│   └── utils/
-│       ├── cache.js
-│       ├── embeds.js
-│       └── formatters.js
-├── package.json
-└── README.md
-```
-
-## Troubleshooting
-
-If commands do not appear in Discord, confirm the bot is invited to the correct guild and the guild/application IDs are correct.
-
-If the bot returns partial profile data during testing, check for HenrikDev rate limits and retry after a few minutes.
-
-If experimental enrichment causes problems, start with stable-only fallback and verify `/valorant-profile` before re-enabling the experimental pipeline.
+The November 22, 2026 audit used Riot's 13.10 notes and HenrikDev's endpoint contract. See the [patch review](knowledge/valorant-13.10.md) and [API field inventory](knowledge/henrikdev-analytics-inventory.md) for the source fields, verification notes, and remaining gaps. Official Map Rating, calibration, Act border progress, and hidden matchmaking rating remain in-game values or unverified fields for this bot.

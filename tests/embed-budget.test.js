@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { createProfileEmbed, createProfileReply, createMMREmbed } = require('../src/utils/embeds');
+const { createProfileEmbed, createProfileReplies, createMMREmbed } = require('../src/utils/embeds');
 
 test('career continuation preserves every row and oversized cards include overflow', () => {
   const mastery = Array.from({ length: 40 }, (_, i) => ({ agent: `Unique agent ${i}`, level: 1 }));
@@ -14,22 +14,25 @@ test('career continuation preserves every row and oversized cards include overfl
   const extra = Array.from({ length: 10 }, (_, i) => ({
     name: `Compare Your Games ${i}`, value: `overflow-marker-${i} ` + 'x'.repeat(950),
   }));
-  const reply = createProfileReply({ toJSON: () => ({ ...card.toJSON(), fields: [...fields, ...extra] }) });
-  const payload = reply.embeds[0];
-  const total = [payload.title, payload.description, payload.author?.name, payload.footer?.text,
-    ...payload.fields.flatMap((f) => [f.name, f.value])].reduce((sum, text) => sum + (text?.length || 0), 0);
-  assert.ok(total <= 5500);
-  assert.ok(payload.fields.every((f) => f.value.length <= 1024));
-  assert.ok(reply.files[0].attachment.toString().includes('overflow-marker-9'));
-  const delivered = payload.fields.map((f) => f.value).join('\n') + reply.files[0].attachment.toString();
+  const reply = createProfileReplies({ toJSON: () => ({ ...card.toJSON(), fields: [...fields, ...extra] }) });
+  for (const page of reply) {
+    const payload = page.embeds[0];
+    const total = [payload.title, payload.description, payload.author?.name, payload.footer?.text,
+      ...payload.fields.flatMap((f) => [f.name, f.value])].reduce((sum, text) => sum + (text?.length || 0), 0);
+    assert.ok(total <= 5500);
+    assert.ok(payload.fields.every((f) => f.value.length <= 1024));
+    assert.equal(page.files, undefined);
+  }
+  const delivered = reply.flatMap((page) => page.embeds[0].fields).map((field) => field.value).join('\n');
+  assert.ok(delivered.includes('overflow-marker-9'));
   for (const row of mastery) assert.ok(delivered.includes(row.agent));
 });
 
-test('a single oversized field is moved intact to the attachment', () => {
+test('an oversized field is split in Discord without losing text', () => {
   const large = 'x'.repeat(1100);
-  const reply = createProfileReply({ toJSON: () => ({ title: 'Test', fields: [{ name: 'Table', value: large }] }) });
-  assert.equal(reply.embeds[0].fields.length, 0);
-  assert.ok(reply.files[0].attachment.toString().includes(large));
+  const reply = createProfileReplies({ toJSON: () => ({ title: 'Test', fields: [{ name: 'Table', value: large }] }) });
+  assert.equal(reply.flatMap((page) => page.embeds[0].fields).map((field) => field.value).join(''), large);
+  assert.ok(reply.every((page) => !page.files));
 });
 
 test('standalone rank card renders Elo and supports missing Elo', () => {
@@ -37,7 +40,7 @@ test('standalone rank card renders Elo and supports missing Elo', () => {
   assert.match(createMMREmbed({}).toJSON().fields.at(-1).value, /Elo:.*N\/A/);
 });
 
-test('full profile keeps every report section in the embed or its overflow file', () => {
+test('full profile keeps every report section across inline embeds', () => {
   const recentMatches = Array.from({ length: 10 }, (_, i) => ({
     matchId: String(i), seasonId: 'act', startedAt: new Date(Date.UTC(2026, 10, i + 1)).toISOString(),
     map: 'Sunset', agent: 'Jett', roundsWon: 13, roundsLost: 9, isWin: true,
@@ -59,17 +62,19 @@ test('full profile keeps every report section in the embed or its overflow file'
     career: { mastery: [{ agent: 'Jett', level: 4 }], accolades: [{ label: 'first blood', count: 7 }],
       actAccolades: { label: 'Act 6', entries: [{ label: 'plants', count: 4 }] } },
   }, { recentMatches, mmrHistory: recentMatches.map((match) => ({ matchId: match.matchId, rrChange: 21 })) });
-  const reply = createProfileReply(card);
-  const { fields } = reply.embeds[0];
-  const text = fields.map(({ name, value }) => `${name}\n${value}`).join('\n') + (reply.files?.[0].attachment.toString() || '');
+  const reply = createProfileReplies(card);
+  const fields = reply.flatMap((page) => page.embeds[0].fields);
+  const text = fields.map(({ name, value }) => `${name}\n${value}`).join('\n');
   for (const title of ['Competitive Snapshot', 'Combat', 'Rank Legacy', 'Agent Mastery', 'Lifetime Accolades',
     'Act Accolades', 'Competitive Maps', 'Rounds Won by Side', 'Sample Leaders & Economy', 'How Often',
     'Compare Your Recent Games', 'Recent Competitive', 'Match Stats', 'Observed RR Changes',
-    'Latest Shown Match', 'How You Played Together', 'With and Without Your Party Partner', 'Account & Rank Details']) assert.ok(text.includes(title), title);
+    'Latest Shown Match', 'How You Played Together', 'Account & Rank Details']) assert.ok(text.includes(title), title);
   const codeBlocks = [...fields.flatMap((field) => [...field.value.matchAll(/```\n([\s\S]*?)\n```/g)])];
   assert.ok(codeBlocks.length >= 8);
   assert.ok(codeBlocks.every(([, table]) => table.split('\n').every((line) => line.length <= 42)));
   assert.match(text, /Sunset \/ Jett \/ attack\n60\/60 \(100%\)/);
   assert.match(text, /BruceBootyLee#OwO/);
+  assert.match(fields.find((field) => field.name.includes('How You Played Together')).value, /Recent apart: 5\/5/);
+  assert.ok(reply.every((page) => !page.files));
   assert.ok(fields.every((field) => field.value.length <= 1024));
 });

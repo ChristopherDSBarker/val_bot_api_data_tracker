@@ -55,6 +55,11 @@ for (const file of commandFiles) {
 
 // When the bot is ready
 client.once('ready', () => {
+  if (process.env.USE_MOCK_DATA !== 'true') {
+    const { refreshAgentRoles } = require('./services/agentRoles');
+    void refreshAgentRoles();
+    setInterval(refreshAgentRoles, 24 * 60 * 60 * 1000).unref();
+  }
   console.log(`\n[BOT] ✓ Logged in as ${client.user.tag}`);
   console.log(`[BOT] ✓ Bot ID: ${client.user.id}`);
   console.log(`[BOT] ✓ Total commands loaded: ${client.commands.size}`);

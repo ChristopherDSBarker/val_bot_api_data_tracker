@@ -1,6 +1,6 @@
 // Compare two disjoint blocks of five completed matches within the latest observed act.
-function compareRoundWindows(matches) {
-  const ordered = matches.filter((match) => match.matchId && match.seasonId && Number.isFinite(Date.parse(match.startedAt)))
+function compareRoundWindows(matches, { byRole = false } = {}) {
+  const ordered = matches.filter((match) => match.completed !== false && match.matchId && match.seasonId && Number.isFinite(Date.parse(match.startedAt)))
     .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
   const act = ordered[0]?.seasonId;
   const unique = [...new Map(ordered.filter((match) => match.seasonId === act)
@@ -10,13 +10,18 @@ function compareRoundWindows(matches) {
   function count(block) {
     const groups = new Map();
     for (const match of block) {
-      if (!match.map || !match.agent || match.map === 'Unknown' || match.agent === 'Unknown') continue;
+      const context = byRole ? [match.role] : [match.map, match.agent];
+      if (context.some((value) => !value || value === 'Unknown')) continue;
       for (const round of match.roundResults || []) {
         if (!['attack', 'defense'].includes(round.side) || typeof round.won !== 'boolean') continue;
-        const key = JSON.stringify([match.map, match.agent, round.side]);
-        const group = groups.get(key) || { map: match.map, agent: match.agent, side: round.side, won: 0, total: 0 };
+        const key = JSON.stringify([...context, round.side]);
+        const group = groups.get(key) || { map: match.map, agent: match.agent, role: match.role, side: round.side, won: 0, total: 0, firstKills: 0, knownOpeners: 0 };
         group.total++;
         if (round.won) group.won++;
+        if (typeof round.playerGotFirstKill === 'boolean') {
+          group.knownOpeners++;
+          if (round.playerGotFirstKill) group.firstKills++;
+        }
         groups.set(key, group);
       }
     }

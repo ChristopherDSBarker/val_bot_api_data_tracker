@@ -1,3 +1,6 @@
+const { roleOf } = require('../services/agentRoles');
+const { summarizeRoles } = require('../services/valorantCareer');
+const { reviewLatestMatch, latestSession } = require('../services/coach');
 const { comparePartyResults } = require('../services/teammateStats');
 const { summarizeSpendingEfficiency } = require('../services/analytics');
 const { compareRoundWindows } = require('../services/progress');
@@ -15,6 +18,37 @@ function formatRRChange(value) {
   const num = Number(value);
   if (!Number.isFinite(num)) return null;
   return num >= 0 ? `+${num}` : `${num}`;
+}
+
+function roleReadout(matches) {
+  const { baseline, roles } = summarizeRoles(matches, roleOf);
+  if (!roles.length) return 'Role results unavailable.';
+  const percent = (wins, games) => Math.round(100 * wins / games);
+  const eligible = roles.filter((row) => row.games >= 3)
+    .sort((a, b) => b.wins / b.games - a.wins / a.games || b.games - a.games);
+  const label = ({ role, games, wins }) => `${role} ${wins}/${games} (${percent(wins, games)}%)`;
+  const reference = `Your recent baseline: ${baseline.wins}/${baseline.games} (${percent(baseline.wins, baseline.games)}%).`;
+  if (eligible.length < 2) {
+    return `${roles.map(label).join(' · ')}\n${reference} Compare after 3 games in each of two roles.`;
+  }
+
+  const [first, second] = eligible;
+  const tied = first.wins * second.games === second.wins * first.games;
+  const delta = Math.round(100 * (first.wins / first.games - baseline.wins / baseline.games));
+  const lines = [`${tied ? 'Tied roles' : 'Highest role win rate'}: ${label(first)} · ${label(second)}`,
+    `${formatRRChange(delta)} percentage points vs your recent baseline of ${percent(baseline.wins, baseline.games)}%.`];
+  for (const row of [first, second]) {
+    if (row.maps.size === 1 && [...row.maps.values()][0] === row.games) {
+      lines.push(`${row.role}: all ${row.games} on ${escapeMarkdown([...row.maps.keys()][0].slice(0, 50))}.`);
+    }
+    if (row.role === 'Duelist' && row.knownOpeners >= 10) {
+      lines.push(`Duelist first kills: ${row.firstKills}/${row.knownOpeners} known openings.`);
+    }
+    if (row.role === 'Sentinel' && row.defenseRounds >= 10) {
+      lines.push(`Sentinel defense: ${row.defenseWins}/${row.defenseRounds} rounds won.`);
+    }
+  }
+  return lines.join('\n');
 }
 
 function sampleReadout(matches, parties) {
@@ -39,6 +73,7 @@ function sampleReadout(matches, parties) {
   const label = (value) => escapeMarkdown(String(value).slice(0, 60));
   return [
     bestAgent ? `**Highest agent win rate:** ${label(bestAgent.name)} · ${bestAgent.wins}/${bestAgent.games} wins` : '**Agent:** Need 3 known results on one agent.',
+    roleReadout(matches),
     partner ? `**Highest party win rate:** ${label(partner.riotId)} · ${partner.wins}/${partner.decided} party wins` : '**Queue partner:** Need 3 confirmed party results with one player.',
     gun ? `**Most gun kills:** ${label(gun[0])} · ${gun[1]} kills.` : '**Gun:** Insufficient named gun events.',
   ].join('\n');
@@ -89,12 +124,13 @@ function statTable(headers, widths, rows) {
 }
 
 // A full-width label sits above each numeric row, so long names never consume a stat column.
-function groupedStatTable(headers, widths, rows) {
+function groupedStatTable(headers, widths, rows, notes = []) {
   const clean = (text) => String(text).replace(/[`\r\n]/g, ' ');
   const body = (table) => table.split('\n').slice(1, -1);
   const [header] = body(statTable(headers, widths, []));
-  const lines = rows.flatMap(([label, ...values]) => [
-    clean(label), ...body(statTable(headers, widths, [values])).slice(1), '',
+  const lines = rows.flatMap(([label, ...values], index) => [
+    clean(label), ...body(statTable(headers, widths, [values])).slice(1),
+    ...(notes[index] || []).map(clean), '',
   ]);
   return '```\n' + [header, '', ...lines].join('\n').trimEnd() + '\n```';
 }
@@ -203,9 +239,9 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
 
   const embed = new EmbedBuilder()
     .setColor(VALORANT_RED)
-    .setAuthor({ name: '◆ VALORANT / RANKED REPORT' })
+    .setAuthor({ name: '◆ VALORANT / RANKED REPORT + COACH' })
     .setTitle(String(riotId).slice(0, 256))
-    .setDescription(`**${descriptionParts[0]}**${descriptionParts.slice(1).map((part) => `  ·  ${part}`).join('')}\n\n**At a glance**\n${recap}${momentum}`);
+    .setDescription(`**${descriptionParts[0]}**${descriptionParts.slice(1).map((part) => `  ·  ${part}`).join('')}\n\n**At a glance**\n${recap}${momentum}\nStart with **Coach · Latest Match** for one replay question.`);
 
   const fields = [];
   const addFields = (...entries) => fields.push(...entries);
@@ -240,6 +276,52 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     value: combatValue.join('\n'),
     inline: true,
   });
+
+  const goal = playerData.goalStatus;
+  const goalLines = playerData.goalNotice ? [playerData.goalNotice] : [];
+  if (goal) {
+    const { current, baseline, target, window } = goal;
+    const record = (row) => row.rounds
+      ? `${row.won}/${row.rounds} first kills (${Math.round(100 * row.won / row.rounds)}%)`
+      : 'No known openings yet.';
+    const progress = current.games >= window
+      ? (current.won * 100 >= target * current.rounds ? 'Target met.' : 'Target missed.')
+      : `${current.games}/${window} matches with known openings.`;
+    goalLines.push(`**Your first-kill goal:** ${target}% of known openings.`,
+      `**Before:** ${record(baseline)}`, `**Since setting it:** ${record(current)} ${progress}`);
+  }
+  const coach = reviewLatestMatch(recentMatches);
+  if (coach) {
+    const { match, score, opened, conceded, personalFirstKills, personalCoverage, openingBaseline, practice } = coach;
+    const result = match.isWin ? 'Won' : 'Lost';
+    const map = escapeMarkdown(String(match.map || 'unknown map').slice(0, 60));
+    const roleLabel = match.role && match.agent ? ` · ${escapeMarkdown(match.agent)} (${match.role})` : '';
+    const readout = [`**${result}${score ? ` ${score}` : ''} on ${map}.**${roleLabel}`];
+    if (opened.total) readout.push(`Your team won ${opened.won}/${opened.total} rounds after getting the first kill.`);
+    if (conceded.total) readout.push(`It won ${conceded.won}/${conceded.total} after the opponent got it.`);
+    if (personalCoverage) {
+      const share = 100 * personalFirstKills / personalCoverage;
+      readout.push(`**Your first kills:** ${personalFirstKills}/${personalCoverage} known openings (${Math.round(share)}%).`);
+      if (openingBaseline) {
+        const { firstKills, rounds, games } = openingBaseline;
+        const earlier = 100 * firstKills / rounds;
+        const change = formatRRChange(Math.round(share - earlier));
+        readout.push(`**Earlier as ${match.role}:** ${firstKills}/${rounds} (${Math.round(earlier)}%) across ${games} matches this act.`);
+        readout.push(`**Change:** ${change} percentage points.`);
+      }
+    }
+    readout.push(`**Replay cue:** ${practice}`);
+    addFields({ name: '🎯 Coach · Latest Match', value: [...goalLines, ...readout].join('\n') });
+  } else if (goalLines.length) {
+    addFields({ name: '🎯 Coach · Your Goal', value: goalLines.join('\n') });
+  }
+  const session = latestSession(recentMatches, mmrHistory);
+  if (session) {
+    const record = session.known ? `Won ${session.wins} of ${session.known} matches with a known result.` : 'Results unavailable.';
+    const readout = [`${session.games} matches in the recent session. ${record}`];
+    if (session.rrCoverage) readout.push(`Observed RR: ${formatRRChange(session.netRR)} across ${session.rrCoverage}/${session.games} matches.`);
+    addFields({ name: '📋 Latest Session · Recent Sample', value: readout.join('\n') });
+  }
 
   // Keep the existing profile fields and add bounded, independently optional surfaces.
   const career = playerData.career;
@@ -334,23 +416,30 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
         '\nEach row uses rounds with the required data. A round can count in both a side and a first-kill row.' });
   }
 
-  const progress = compareRoundWindows(recentMatches);
+  const exactProgress = compareRoundWindows(recentMatches);
+  const byRole = exactProgress.length === 0;
+  const progress = byRole ? compareRoundWindows(recentMatches, { byRole }) : exactProgress;
   if (progress.length) {
-    const record = (row) => `${row.won}/${row.total} (${Math.round(100 * row.won / row.total)}%)`;
-    const { prior, recent } = progress[0];
-    const rows = progress.slice(0, 3).map(({ prior, recent }) => [
-      `${recent.map} / ${recent.agent} / ${recent.side}`, record(prior), record(recent),
+    const record = (won, total) => `${won}/${total} (${Math.round(100 * won / total)}%)`;
+    const delta = (before, after) => `${formatRRChange(Math.round((after - before) * 100))} pp`;
+    const shown = progress.slice(0, 3);
+    const rows = shown.map(({ prior, recent }) => [
+      byRole ? `${recent.role} / ${recent.side}` : `${recent.map} / ${recent.agent} / ${recent.side}`,
+      record(prior.won, prior.total), record(recent.won, recent.total),
+      delta(prior.won / prior.total, recent.won / recent.total),
     ]);
-    const direction = Math.sign(recent.won * prior.total - prior.won * recent.total);
-    const comparison = direction > 0 ? 'won a larger share of rounds' : direction < 0
-      ? 'won a smaller share of rounds' : 'won the same share of rounds';
+    const notes = shown.map(({ prior, recent }) => {
+      if (prior.knownOpeners < 10 || recent.knownOpeners < 10) return [];
+      return ['Your first kills:',
+        `${record(prior.firstKills, prior.knownOpeners)} → ${record(recent.firstKills, recent.knownOpeners)}`];
+    });
     addFields({ name: '↗ Compare Your Recent Games',
-      value: `On **${escapeMarkdown(recent.map)}** playing **${escapeMarkdown(recent.agent)}** on ${recent.side}, you ${comparison} in the newer block.\n` +
-        groupedStatTable(['Earlier 5', 'Latest 5'], [14, 14], rows) +
-        '\nSame act. Each row needs 10 known rounds per block. Matchups and teammates may differ.' });
+      value: groupedStatTable(['Earlier 5', 'Latest 5', 'Change'], [14, 14, 7], rows, notes) +
+        '\nSame act · pp = percentage points. Each sample needs 10 known rounds.' +
+        (byRole ? '\nMatched by role and side. Maps and agents may differ.' : '\nMatched by map, agent, and side.') });
   } else if (recentMatches.length >= 10) {
     addFields({ name: '↗ Compare Your Recent Games',
-      value: 'No comparable split in this sample. The comparison needs two sets of five matches in one act and at least 10 known rounds in each set on the same map, agent, and side.' });
+      value: 'No comparable split in this sample. The comparison needs two sets of five matches in one act and at least 10 known rounds in each set with a matching map, agent, and side, or a matching role and side.' });
   }
 
   const rrByMatch = new Map(mmrHistory.filter((entry) => entry?.matchId).map((entry) => [entry.matchId, entry]));
@@ -392,46 +481,37 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     ...parties.map((row) => ({ ...row, group: 'Party' })),
     ...teammates.filter((row) => !partyIds.has(identity(row)))
       .map((row) => ({ ...row, group: 'Team' })),
-  ].sort((a, b) => Number(b.friend) - Number(a.friend));
-  if (comparison.length || playerData.selectedFriend) {
-    const rows = comparison.slice(0, 6).map((row) => [
-      row.friend ? `*${row.riotId}` : row.riotId,
+  ];
+  if (comparison.length) {
+    const players = comparison.slice(0, 6);
+    const rows = players.map((row) => [
+      row.riotId,
       row.group,
       row.decided ? `${row.wins}/${row.decided}` : '—',
       row.decided ? `${Math.round(100 * row.wins / row.decided)}%` : '—',
       row.roundGames ? formatRRChange(Number((row.roundDiff / row.roundGames).toFixed(1))) : '—',
       row.tradeGames ? `${row.trades}/${row.tradeGames}` : '—',
     ]);
+    const recent = new Map(comparePartyResults(recentMatches, parties).map((row) => [identity(row), row]));
+    const saved = new Map((playerData.savedPartyResults || []).map((row) => [row.riotId.toLowerCase(), row]));
+    const record = ({ wins, games }) => `${wins}/${games} (${Math.round(100 * wins / games)}%)`;
+    const notes = players.map((player) => {
+      const split = recent.get(identity(player));
+      const history = saved.get(player.riotId.toLowerCase());
+      return [
+        ...(split ? [`Recent apart: ${record(split.withoutPartner)}`] : []),
+        ...(history ? [`Saved act with: ${record(history.together)}`, `Saved act apart: ${record(history.apart)}`] : []),
+      ];
+    });
     const parts = [];
     if (rows.length) {
-      parts.push(groupedStatTable(['Group', 'Wins', 'Win %', 'Margin', 'Trades'], [5, 5, 5, 7, 8], rows));
+      parts.push(groupedStatTable(['Group', 'Wins', 'Win %', 'Margin', 'Trades'], [5, 5, 5, 7, 8], rows, notes));
       parts.push('**Party** = queued together. **Team** = played on your side. Party rows count only party games.');
+      if (notes.some((note) => note.length)) parts.push('**Apart** counts known games queued separately. Saved act rows use saved matches.');
       parts.push('**Margin** = average rounds won minus lost. **Trades** = times they avenged your death within 5 seconds / games with kill records.');
     }
-    if (comparison.some((row) => row.friend)) parts.push('`*` marks your friend.');
-    else if (playerData.selectedFriend) parts.push('Your marked friend was not found in this sample.');
     if (comparison.length > rows.length) parts.push(`Showing ${rows.length} of ${comparison.length} players.`);
     addFields({ name: '👥 How You Played Together', value: parts.join('\n') });
-  }
-
-  const partnerSplits = comparePartyResults(recentMatches, parties);
-  if (partnerSplits.length) {
-    const record = ({ wins, games }) => `${wins}/${games} (${Math.round(100 * wins / games)}%)`;
-    const rows = partnerSplits.slice(0, 3).map((row) => [
-      row.riotId, record(row.withPartner), record(row.withoutPartner),
-    ]);
-    addFields({ name: 'With and Without Your Party Partner',
-      value: groupedStatTable(['Queued together', 'Queued apart'], [16, 16], rows) +
-        '\nMatch wins. Games with unknown party status are excluded.' });
-  }
-
-  if (playerData.savedPartyResults?.length) {
-    const record = ({ wins, games }) => `${wins}/${games} (${Math.round(100 * wins / games)}%)`;
-    const rows = playerData.savedPartyResults.slice(0, 3).map((row) =>
-      [row.riotId, record(row.together), record(row.apart)]);
-    addFields({ name: 'Saved Party Records · Same Act',
-      value: groupedStatTable(['Queued together', 'Queued apart'], [16, 16], rows) +
-        '\nFrom saved games. These are observed results from different matches.' });
   }
 
   const extraParts = [];
@@ -608,34 +688,57 @@ function createMMREmbed(mmrData) {
   return embed;
 }
 
-// Discord applies its text limit across all embeds on a single message.
-function createProfileReply(embed) {
+// Discord counts the text of all embeds in one message together.
+function createProfileReplies(embed) {
   const { fields: visibleFields = [], ...header } = embed.toJSON();
   const allFields = reportFields.get(embed) || visibleFields;
-  const baseLength = [header.title, header.description, header.author?.name, header.footer?.text]
+  const pages = [];
+  let fields = [];
+  let size = [header.title, header.description, header.author?.name, header.footer?.text]
     .reduce((sum, text) => sum + (text?.length || 0), 0);
-  const priority = (field) => /Compare Your|How Often|Sample Leaders|How You Played Together/.test(field.name) ? 1 : 0;
-  let length = baseLength;
-  const included = new Set();
-  for (const field of [...allFields].sort((a, b) => priority(a) - priority(b))) {
-    const size = field.name.length + field.value.length;
-    if (field.value.length > 1024 || included.size >= 24 || length + size > 5500) continue;
-    included.add(field);
-    length += size;
+
+  function finishPage() {
+    const pageHeader = pages.length ? { title: 'Ranked Report · Continued', color: header.color } : header;
+    pages.push({ embeds: [{ ...pageHeader, fields }], allowedMentions: { parse: [] } });
+    fields = [];
+    size = 'Ranked Report · Continued'.length;
   }
-  const reply = { embeds: [{ ...header, fields: allFields.filter((field) => included.has(field)) }], allowedMentions: { parse: [] } };
-  if (included.size !== allFields.length) {
-    const overflow = allFields.filter((field) => !included.has(field));
-    reply.content = `The attached ranked report contains ${overflow.length} additional section(s).`;
-    reply.files = [{ name: 'ranked-report-details.txt', attachment: Buffer.from(
-      [header.title, ...overflow.map((field) => `${field.name}\n${field.value.replace(/^```$/gm, '')}`)].join('\n\n'), 'utf8') }];
+
+  for (const field of allFields) {
+    // Keep normal fields intact. For unusually long sections, close and reopen code fences.
+    const chunks = [];
+    let lines = [];
+    let length = 0;
+    let fenced = false;
+    for (const line of field.value.split('\n')) {
+      for (const piece of line.match(/[\s\S]{1,940}/gu) || ['']) {
+        if (length + piece.length + 1 > 980) {
+          chunks.push([...lines, ...(fenced ? ['```'] : [])].join('\n'));
+          lines = fenced ? ['```'] : [];
+          length = fenced ? 4 : 0;
+        }
+        lines.push(piece);
+        length += piece.length + 1;
+        if (piece === '```') fenced = !fenced;
+      }
+    }
+    if (field.value.length <= 1024) chunks.splice(0, chunks.length, field.value);
+    else if (lines.length) chunks.push(lines.join('\n'));
+
+    for (const [i, value] of chunks.entries()) {
+      const name = i ? `${field.name} · Continued` : field.name;
+      if (fields.length >= 25 || size + name.length + value.length > 5500) finishPage();
+      fields.push({ ...field, name, value });
+      size += name.length + value.length;
+    }
   }
-  return reply;
+  if (fields.length || !pages.length) finishPage();
+  return pages;
 }
 
 module.exports = {
   createProfileEmbed,
-  createProfileReply,
+  createProfileReplies,
   createMatchEmbed,
   createRecentMatchesOverviewEmbed,
   createErrorEmbed,

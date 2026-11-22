@@ -78,3 +78,14 @@ test('progress keeps the full map, agent, and side on their own line', () => {
   assert.match(progress, /Earlier 5\s+Latest 5/);
   assert.match(progress, /Sunset \/ Jett \/ attack\n1\/12 \(8%\)\s+13\/24 \(54%\)/);
 });
+
+test('role comparison uses a personal baseline, names a single-map sample, and requires two eligible roles', () => {
+  const duelist = Array.from({ length: 3 }, (_, i) => ({ agent: 'Jett', map: 'Ascent', isWin: i < 2 }));
+  const controller = Array.from({ length: 3 }, (_, i) => ({ agent: 'Omen', map: 'Lotus', isWin: i < 1 }));
+  const read = (recentMatches) => createProfileEmbed({}, { recentMatches }).toJSON().fields
+    .find((field) => field.name.includes('Sample Leaders')).value;
+  assert.match(read([...duelist, ...controller]), /Duelist 2\/3 \(67%\).*Controller 1\/3 \(33%\)/);
+  assert.match(read([...duelist, ...controller]), /\+17 percentage points vs your recent baseline of 50%/);
+  assert.match(read([...duelist, ...controller]), /Duelist: all 3 on Ascent/);
+  assert.doesNotMatch(read(duelist), /Highest role win rate/);
+});

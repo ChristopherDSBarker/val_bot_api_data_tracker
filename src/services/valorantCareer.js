@@ -61,4 +61,37 @@ function summarizeMaps(matches = []) {
   })).sort((a, b) => b.games - a.games || a.map.localeCompare(b.map));
 }
 
-module.exports = { normalizeCareer, normalizeActAccolades, summarizeMaps };
+function summarizeRoles(matches, roleOf) {
+  const roles = new Map();
+  const seen = new Set();
+  const baseline = { wins: 0, games: 0 };
+  for (const match of matches) {
+    if (match.completed === false || typeof match.isWin !== 'boolean' ||
+        (match.matchId && seen.has(match.matchId))) continue;
+    if (match.matchId) seen.add(match.matchId);
+    baseline.games++;
+    if (match.isWin) baseline.wins++;
+
+    const role = match.role || roleOf(match.agent);
+    if (!role || role === 'Unknown') continue;
+    const row = roles.get(role) || { role, wins: 0, games: 0, maps: new Map(),
+      firstKills: 0, knownOpeners: 0, defenseWins: 0, defenseRounds: 0 };
+    row.games++;
+    if (match.isWin) row.wins++;
+    if (match.map && match.map !== 'Unknown') row.maps.set(match.map, (row.maps.get(match.map) || 0) + 1);
+    for (const round of match.roundResults || []) {
+      if (typeof round.playerGotFirstKill === 'boolean') {
+        row.knownOpeners++;
+        if (round.playerGotFirstKill) row.firstKills++;
+      }
+      if (round.side === 'defense' && typeof round.won === 'boolean') {
+        row.defenseRounds++;
+        if (round.won) row.defenseWins++;
+      }
+    }
+    roles.set(role, row);
+  }
+  return { baseline, roles: [...roles.values()] };
+}
+
+module.exports = { normalizeCareer, normalizeActAccolades, summarizeMaps, summarizeRoles };

@@ -3,16 +3,18 @@ const { matchStore, historicalPartySplits } = require('../services/store');
  * /valorant-profile command - Display Valorant player profile stats
  */
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const valorantApi = require('../services/valorantApi');
 const embeds = require('../utils/embeds');
+const { coachGoals } = require('../services/coachGoals');
+const { sendProfilePages } = require('../utils/profilePagination');
 const { summarizeTeammates } = require('../services/teammateStats');
 const { summarizeMaps } = require('../services/valorantCareer');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('valorant-profile')
-    .setDescription('Display Valorant player profile stats')
+    .setDescription('Show your ranked report and coaching insights')
     .addStringOption((option) =>
       option
         .setName('name')
@@ -40,20 +42,20 @@ module.exports = {
           { name: 'Asia-Pacific', value: 'ap' }
         )
     )
-    .addStringOption((option) => option.setName('friend')
-      .setDescription('Known friend to highlight, using their Riot ID (Name#TAG)').setMaxLength(60)),
+    .addIntegerOption((option) => option.setName('goal')
+      .setDescription('Private goal: your share of first kills over five matches').setMinValue(0).setMaxValue(100)),
 
   async execute(interaction) {
     let deferred = false;
     try {
       // Defer the reply since the API call might take a moment
-      await interaction.deferReply();
+      const target = interaction.options.getInteger?.('goal');
+      await interaction.deferReply(Number.isInteger(target) ? { flags: MessageFlags.Ephemeral } : {});
       deferred = true;
 
       const name = interaction.options.getString('name');
       const tag = interaction.options.getString('tag');
       const region = interaction.options.getString('region') || 'na';
-      const friend = interaction.options.getString('friend')?.trim();
 
       // Validate inputs
       if (!name || name.trim().length === 0) {
@@ -125,18 +127,34 @@ module.exports = {
         return;
       }
 
-      const partySummary = summarizeTeammates(recentMatches, friend, { partyOnly: true });
+      const partySummary = summarizeTeammates(recentMatches, null, { partyOnly: true });
       let savedPartyResults = [];
+      const puuid = account?.puuid || experimentalEnhancements?.account?.puuid;
       // Store only the current v4 sample, never mock entries or the stored-history fallback.
-      if (process.env.ENABLE_MATCH_HISTORY === 'true' && process.env.USE_MOCK_DATA !== 'true' &&
-          interaction.guildId && (account?.puuid || experimentalEnhancements?.account?.puuid)) {
+      if (process.env.ENABLE_MATCH_HISTORY !== 'false' && process.env.USE_MOCK_DATA !== 'true' &&
+          interaction.guildId && puuid) {
         try {
-          const puuid = account?.puuid || experimentalEnhancements.account.puuid;
           const history = await matchStore.recordAndRead(interaction.guildId, puuid, recentMatches.filter((match) => !match.dataSource));
           const latest = [...history].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))[0];
           savedPartyResults = historicalPartySplits(history, interaction.guildId, latest?.actId, partySummary);
         } catch (error) {
           console.warn('[HISTORY] Saved comparisons unavailable:', error.code || error.name);
+        }
+      }
+
+      let goalStatus = null;
+      let goalNotice = null;
+      if (Number.isInteger(target)) {
+        if (!interaction.guildId || !interaction.user?.id || !puuid || process.env.USE_MOCK_DATA === 'true') {
+          goalNotice = 'A saved goal needs a live Riot account and a Discord server.';
+        } else {
+          try {
+            const identity = [interaction.guildId, interaction.user.id, puuid, region, 'personal-first-kill-v1'];
+            goalStatus = await coachGoals.checkIn(identity, recentMatches.filter((match) => !match.dataSource), target);
+          } catch (error) {
+            console.warn('[COACH] Saved goal unavailable:', error.code || error.name);
+            goalNotice = 'Saved goal unavailable right now. The match review is still available.';
+          }
         }
       }
 
@@ -148,10 +166,11 @@ module.exports = {
         mmrHistory,
         career: experimentalEnhancements?.career || null,
         mapSummary: summarizeMaps(recentMatches),
-        teammateSummary: summarizeTeammates(recentMatches, friend),
+        teammateSummary: summarizeTeammates(recentMatches),
         partySummary,
         savedPartyResults,
-        selectedFriend: friend,
+        goalStatus,
+        goalNotice,
         // Ensure we preserve profile-specific fields even if MMR is missing
         riotId: playerProfile?.riotId || `${account?.name || name}#${account?.tag || tag}`,
         name: playerMMR?.name || account?.name || name,
@@ -177,7 +196,7 @@ module.exports = {
         mmrHistory,
         recentMatches,
       });
-      await interaction.editReply(embeds.createProfileReply(profileEmbed));
+      await sendProfilePages(interaction, embeds.createProfileReplies(profileEmbed));
     } catch (error) {
       console.error('[ERROR] Valorant profile command failed:', error);
       const errorEmbed = embeds.createErrorEmbed(

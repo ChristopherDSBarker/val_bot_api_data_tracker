@@ -1,3 +1,4 @@
+const { roleOf } = require('./agentRoles');
 const { tradesAfterDeath, sameParty, partyId } = require('./teammateStats');
 /**
  * Valorant API service - handles both real API and mock data
@@ -805,7 +806,10 @@ function normalizeMatch(match, player) {
         : ['defend', 'defense', 'defender', 'defenders'].includes(role) ? 'defense' : null;
       const side = !winningSide || won ? winningSide : winningSide === 'attack' ? 'defense' : 'attack';
       const opened = opener === playerTeamKey ? true : opener === enemyTeamKey ? false : null;
-      roundResults.push({ won, opened, side });
+      const openerId = firstText(round.first_blood?.puuid);
+      const playerGotFirstKill = opened !== null && openerId && player.puuid
+        ? openerId === player.puuid : null;
+      roundResults.push({ won, opened, side, playerGotFirstKill });
     }
   }
   const weaponKills = Object.create(null);
@@ -825,6 +829,7 @@ function normalizeMatch(match, player) {
     tier: firstText(player.tier?.name, player.currenttier_patched),
     seasonLabel: firstText(metadata.season?.short),
     startedAt: firstText(metadata.started_at),
+    durationMs: safeOptionalNumber(metadata.game_length_in_ms),
     weaponKills,
     roundResults,
     creditsSpentTotal: roundsPlayed > 0 ? safeOptionalNumber(player.economy?.spent?.overall) : null,
@@ -841,6 +846,7 @@ function normalizeMatch(match, player) {
     performanceScore: safeOptionalNumber(player.performance?.score),
     performanceGrade: player.performance?.ratings?.grade || null,
     agent: getAgentName(player),
+    role: roleOf(getAgentName(player)),
     map: getMapName(metadata),
     roundsWon,
     roundsLost,

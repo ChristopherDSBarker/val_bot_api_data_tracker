@@ -53,7 +53,7 @@ function createMatchStore(file) {
           match.completed === false || typeof match.isWin !== 'boolean') continue;
         const row = {
           guild, player, matchId: match.matchId, actId: match.seasonId, startedAt: match.startedAt,
-          won: match.isWin, map: match.map, agent: match.agent, tier: match.tier,
+          won: match.isWin, map: match.map, agent: match.agent, role: match.role ?? null, tier: match.tier,
           acs: match.acsPerRound, adr: match.adrPerRound, roundsPlayed: match.roundsPlayed,
           kills: match.kills, deaths: match.deaths, assists: match.assists,
           damageDealt: match.damageDealt, credits: match.creditsSpentTotal,

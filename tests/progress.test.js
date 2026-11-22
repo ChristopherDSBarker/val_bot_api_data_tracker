@@ -24,3 +24,18 @@ test('act accolades select the matching act ID and preserve reported zero', () =
     { label: 'v26a6', entries: [{ label: 'aces', count: 0 }] });
   assert.equal(normalizeActAccolades(payload, { seasonId: 'missing' }), null);
 });
+
+test('role and side fallback compares different agents in the same role using known opener counts', () => {
+  const matches = Array.from({ length: 10 }, (_, i) => ({
+    matchId: String(i), seasonId: 'act', startedAt: new Date(Date.UTC(2026, 10, i + 1)).toISOString(),
+    map: i < 5 ? 'Haven' : 'Sunset', agent: i < 5 ? 'Jett' : 'Hush', role: 'Duelist',
+    roundResults: [
+      { side: 'attack', won: true, playerGotFirstKill: i >= 5 },
+      { side: 'attack', won: i >= 5, playerGotFirstKill: i >= 5 ? false : null },
+    ],
+  }));
+  assert.deepEqual(compareRoundWindows(matches), []);
+  const [row] = compareRoundWindows(matches, { byRole: true });
+  assert.equal(row.recent.role, 'Duelist');
+  assert.deepEqual([row.prior.knownOpeners, row.recent.knownOpeners, row.recent.firstKills], [5, 10, 5]);
+});

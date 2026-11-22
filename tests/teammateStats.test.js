@@ -32,3 +32,16 @@ test('party reports require a positive same-match party ID and exclude ordinary 
   const [party] = summarizeTeammates(matches, null, { partyOnly: true });
   assert.deepEqual([party.games, party.wins, party.roundDiff], [1, 1, 4]);
 });
+
+test('party splits exclude unknown rosters and duplicate matches', () => {
+  const { comparePartyResults } = require('../src/services/teammateStats');
+  const partner = { key: 'duo', riotId: 'Duo#NA1' };
+  const together = { matchId: '1', isWin: true, teammates: [{ puuid: 'duo', sameParty: true }] };
+  const [row] = comparePartyResults([together, together,
+    { matchId: '2', isWin: false, partyCheckComplete: true, teammates: [] },
+    { matchId: '3', isWin: false, teammates: [] },
+    { matchId: '4', isWin: true, teammates: [{ puuid: 'duo', sameParty: false }] },
+  ], [partner]);
+  assert.deepEqual(row.withPartner, { wins: 1, games: 1 });
+  assert.deepEqual(row.withoutPartner, { wins: 0, games: 1 });
+});

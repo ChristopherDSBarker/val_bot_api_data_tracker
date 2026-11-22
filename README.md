@@ -4,10 +4,12 @@ Run `/valorant-profile` to see how your recent ranked games went, who you queued
 
 ## Run the bot
 
-You'll need Node.js, a Discord bot invited to your server with slash command support, and a HenrikDev API key for live stats.
+Use Node.js 22, a Discord bot invited to your server with slash command support, and your own HenrikDev API key for live stats. Clone the repository and run the commands below from its directory.
 
 ```bash
-npm install
+git clone https://github.com/ChristopherDSBarker/val_bot_api_data_tracker.git
+cd val_bot_api_data_tracker
+npm ci
 cp -n .env.example .env
 ```
 
@@ -40,6 +42,8 @@ Use the region where the player competes. Region defaults to `na`. Add `friend:N
 
 **Reading a result:** `1/5 (20%)` means one win in five known results. A small sample can suggest a replay worth reviewing. It can't tell you that a teammate, agent, or purchase caused the outcome.
 
+The round section also tells you, in plain English, how often your team won after getting or giving up the first kill. The economy table separates your purchases from the value of gear you carried. It shows your credits spent per team round won and your damage per 1,000 credits spent. Each ratio uses only matches with both required inputs and displays its match count. The party comparison shows match wins with and without a confirmed party partner in the recent window. Games with incomplete party records are excluded from the queued-apart count. Weapon choice, saved gear, opponents, and teammates can all affect the observed results.
+
 The card shows headshots as a share of **recorded hits**. It shows damage delta per round only when damage dealt, damage received, and round counts support the calculation. Dashes and “unavailable” indicate missing data.
 
 ## Troubleshoot and test
@@ -57,3 +61,9 @@ If a report exceeds the card’s space, additional sections go into an attached 
 HenrikDev supplies the account, rank, RR history, matches, mastery, and accolade data. The bot uses match v4 with a v3 fallback and RR history v2 with a v1 fallback. HenrikDev's v4 match route caps each response at ten matches. The report reads one recent window and does not maintain longitudinal history.
 
 The November 22, 2026 audit used Riot's 13.10 notes and HenrikDev's endpoint contract. See the [patch review](knowledge/valorant-13.10.md) and [API field inventory](knowledge/henrikdev-analytics-inventory.md) for the source fields, verification notes, and remaining gaps. Official Map Rating, calibration, Act border progress, and hidden matchmaking rating remain in-game values or unverified fields for this bot.
+
+### Optional saved party history
+
+Set `ENABLE_MATCH_HISTORY=true` in `.env` to build a local history from completed matches returned by profile lookups. The bot starts with the matches it sees after enabling the option. It shows a saved same-act comparison for partners identified in the recent report once it has five known matches together and ten verified matches apart. Unknown party status stays out of the apart count. The recent sections remain available during history collection.
+
+The bot stores the match records in `data/matches.jsonl`, which is ignored by Git. It stores guild IDs, guild-scoped hashes of player identifiers, and match statistics. It does not store Riot names or Discord requester IDs in match records. The store is intended for one bot process. Setting the flag to false stops collection and leaves existing records on disk.

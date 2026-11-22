@@ -1,4 +1,4 @@
-const { tradesAfterDeath, sameParty } = require('./teammateStats');
+const { tradesAfterDeath, sameParty, partyId } = require('./teammateStats');
 /**
  * Valorant API service - handles both real API and mock data
  */
@@ -815,23 +815,29 @@ function normalizeMatch(match, player) {
       weaponKills[name] = (weaponKills[name] || 0) + 1;
     }
   }
+  const teammates = playerTeamKey ? getAllPlayers(match)
+    .filter((other) => other && other !== player && normalizeTeamKey(getPlayerTeam(other)) === playerTeamKey) : [];
   const tradeCredits = tradesAfterDeath(match, player.puuid);
   return {
     matchId: firstText(metadata.match_id, metadata.matchid),
     seasonId: firstText(metadata.season?.id),
+    completed: metadata.is_completed,
+    tier: firstText(player.tier?.name, player.currenttier_patched),
     seasonLabel: firstText(metadata.season?.short),
     startedAt: firstText(metadata.started_at),
     weaponKills,
     roundResults,
+    creditsSpentTotal: roundsPlayed > 0 ? safeOptionalNumber(player.economy?.spent?.overall) : null,
     creditsPerRound: roundsPlayed > 0 ? safeOptionalNumber(player.economy?.spent?.average) : null,
     loadoutPerRound: roundsPlayed > 0 ? safeOptionalNumber(player.economy?.loadout_value?.average) : null,
-    teammates: playerTeamKey ? getAllPlayers(match)
-      .filter((other) => other && other !== player && normalizeTeamKey(getPlayerTeam(other)) === playerTeamKey)
-      .slice(0, 4)
+    partyCheckComplete: Boolean(partyId(player) && teammates.length === 4 &&
+      teammates.every((other) => partyId(other) && other.puuid) &&
+      new Set(teammates.map((other) => other.puuid)).size === 4),
+    teammates: teammates.slice(0, 4)
       .map((other) => ({ agent: getAgentName(other), name: firstText(other.name, other.game_name),
         tag: firstText(other.tag, other.tag_line), puuid: other.puuid, sameParty: sameParty(player, other),
         trades: tradeCredits && other.puuid ? (tradeCredits.get(other.puuid) ?? 0) : null, kills: safeOptionalNumber(other.stats?.kills),
-        deaths: safeOptionalNumber(other.stats?.deaths), assists: safeOptionalNumber(other.stats?.assists) })) : [],
+        deaths: safeOptionalNumber(other.stats?.deaths), assists: safeOptionalNumber(other.stats?.assists) })),
     performanceScore: safeOptionalNumber(player.performance?.score),
     performanceGrade: player.performance?.ratings?.grade || null,
     agent: getAgentName(player),

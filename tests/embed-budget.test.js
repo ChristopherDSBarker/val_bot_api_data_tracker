@@ -42,10 +42,12 @@ test('full profile keeps every report section in the embed or its overflow file'
     matchId: String(i), seasonId: 'act', startedAt: new Date(Date.UTC(2026, 10, i + 1)).toISOString(),
     map: 'Sunset', agent: 'Jett', roundsWon: 13, roundsLost: 9, isWin: true,
     kills: 18, deaths: 12, assists: 7, performanceScore: i === 0 ? null : 245,
-    teammates: [{ name: 'BruceBootyLee', tag: 'OwO', agent: 'Clove' }],
+    partyCheckComplete: i >= 5,
+    teammates: [{ name: 'BruceBootyLee', tag: 'OwO', agent: 'Clove', sameParty: i < 5 }],
     roundResults: Array.from({ length: 12 }, () => ({ side: 'attack', opened: true, won: true })),
   }));
   const partySummary = Array.from({ length: 6 }, (_, i) => ({
+    key: i ? `peer-${i}` : 'brucebootylee#owo',
     riotId: i ? `Teammate ${i}#NA1` : 'BruceBootyLee#OwO', games: 5, decided: 5, wins: 3,
     roundGames: 5, roundDiff: 11, tradeGames: 5, trades: 2,
   }));
@@ -63,7 +65,7 @@ test('full profile keeps every report section in the embed or its overflow file'
   for (const title of ['Competitive Snapshot', 'Combat', 'Rank Legacy', 'Agent Mastery', 'Lifetime Accolades',
     'Act Accolades', 'Competitive Maps', 'Rounds Won by Side', 'Sample Leaders & Economy', 'How Often',
     'Compare Your Recent Games', 'Recent Competitive', 'Match Stats', 'Observed RR Changes',
-    'Latest Shown Match', 'How You Played Together', 'Account & Rank Details']) assert.ok(text.includes(title), title);
+    'Latest Shown Match', 'How You Played Together', 'With and Without Your Party Partner', 'Account & Rank Details']) assert.ok(text.includes(title), title);
   const codeBlocks = [...fields.flatMap((field) => [...field.value.matchAll(/```\n([\s\S]*?)\n```/g)])];
   assert.ok(codeBlocks.length >= 8);
   assert.ok(codeBlocks.every(([, table]) => table.split('\n').every((line) => line.length <= 42)));

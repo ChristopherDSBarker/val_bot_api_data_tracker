@@ -35,9 +35,9 @@ test('losing sample leaders are descriptive and economy is weighted by rounds', 
   const card = createProfileEmbed({ partySummary: [{ riotId: 'Doi#NA1', games: 4, decided: 4, wins: 1 }] },
     { recentMatches }).toJSON();
   const readout = card.fields.find((field) => field.name === 'Recent Sample Leaders & Economy').value;
-  assert.match(readout, /Clove.*0\/4 wins\. No winning record/);
-  assert.match(readout, /Doi#NA1.*1\/4 party wins\. No winning record/);
-  assert.match(readout, /2,000 credits per round across 60 rounds/);
+  assert.match(readout, /Clove.*0\/4 wins/);
+  assert.match(readout, /Doi#NA1.*1\/4 party wins/);
+  assert.match(readout, /Spent \/ round\s+2,000\s+60 rounds/);
 });
 
 test('round table uses separate observed denominators for sides and first kills', () => {

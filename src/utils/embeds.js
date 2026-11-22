@@ -1,3 +1,5 @@
+const { comparePartyResults } = require('../services/teammateStats');
+const { summarizeSpendingEfficiency } = require('../services/analytics');
 const { compareRoundWindows } = require('../services/progress');
 /**
  * Discord embed builders for Valorant stats
@@ -18,17 +20,9 @@ function formatRRChange(value) {
 function sampleReadout(matches, parties) {
   const weapons = new Map();
   const agents = new Map();
-  const economy = { spend: { total: 0, rounds: 0 }, loadout: { total: 0, rounds: 0 } };
   for (const match of matches) {
     for (const [weapon, kills] of Object.entries(match.weaponKills || {})) {
       weapons.set(weapon, (weapons.get(weapon) || 0) + kills);
-    }
-    if (Number.isFinite(match.roundsPlayed) && match.roundsPlayed > 0) {
-      for (const [key, value] of [['spend', match.creditsPerRound], ['loadout', match.loadoutPerRound]]) {
-        if (!Number.isFinite(value)) continue;
-        economy[key].total += value * match.roundsPlayed;
-        economy[key].rounds += match.roundsPlayed;
-      }
     }
     if (!match.agent || typeof match.isWin !== 'boolean') continue;
     const row = agents.get(match.agent) || { name: match.agent, wins: 0, games: 0 };
@@ -41,15 +35,38 @@ function sampleReadout(matches, parties) {
   const partner = [...parties].filter((row) => row.decided >= 3)
     .sort((a, b) => b.wins / b.decided - a.wins / a.decided || b.decided - a.decided)[0];
   const gun = [...weapons].sort((a, b) => b[1] - a[1])[0];
+
   const label = (value) => escapeMarkdown(String(value).slice(0, 60));
   return [
-    bestAgent ? `**Agent sample leader:** ${label(bestAgent.name)} · ${bestAgent.wins}/${bestAgent.games} wins. ${bestAgent.wins / bestAgent.games <= 0.5 ? 'No winning record.' : 'Recent results only.'}` : '**Agent:** Need 3 known results on one agent.',
-    partner ? `**Party sample leader:** ${label(partner.riotId)} · ${partner.wins}/${partner.decided} party wins. ${partner.wins / partner.decided <= 0.5 ? 'No winning record.' : 'Recent results only.'}` : '**Queue partner:** Need 3 confirmed party results with one player.',
-    gun ? `**Most recorded gun kills:** ${label(gun[0])} · ${gun[1]} kills. Usage time unavailable.` : '**Gun:** Insufficient named gun events.',
-    ...[['Credits spent', economy.spend], ['Equipment carried', economy.loadout]].map(([label, metric]) =>
-      metric.rounds ? `**${label}:** ${Math.round(metric.total / metric.rounds).toLocaleString('en-US')} credits per round across ${metric.rounds} rounds` : `**${label}:** Unavailable.`),
-    'Spending measures purchases. Equipment value includes gear carried into the round.',
+    bestAgent ? `**Highest agent win rate:** ${label(bestAgent.name)} · ${bestAgent.wins}/${bestAgent.games} wins` : '**Agent:** Need 3 known results on one agent.',
+    partner ? `**Highest party win rate:** ${label(partner.riotId)} · ${partner.wins}/${partner.decided} party wins` : '**Queue partner:** Need 3 confirmed party results with one player.',
+    gun ? `**Most gun kills:** ${label(gun[0])} · ${gun[1]} kills.` : '**Gun:** Insufficient named gun events.',
   ].join('\n');
+}
+
+function economyReadout(matches) {
+  const format = (value) => Math.round(value).toLocaleString('en-US');
+  function average(field) {
+    const covered = matches.filter((match) => Number.isFinite(match[field]) && match[field] >= 0 &&
+      Number.isFinite(match.roundsPlayed) && match.roundsPlayed > 0);
+    const rounds = covered.reduce((sum, match) => sum + match.roundsPlayed, 0);
+    const total = covered.reduce((sum, match) => sum + match[field] * match.roundsPlayed, 0);
+    return rounds ? [format(total / rounds), `${rounds} rounds`] : ['—', '—'];
+  }
+
+  const { roundWins, damage } = summarizeSpendingEfficiency(matches);
+  const rows = [
+    ['Spent / round', ...average('creditsPerRound')],
+    ['Gear value / round', ...average('loadoutPerRound')],
+    ['Spend / round won', roundWins?.perThousand > 0 ? format(1000 / roundWins.perThousand) : '—',
+      roundWins ? `${roundWins.matches} games` : '—'],
+    ['Damage / 1k spent', damage ? format(damage.perThousand) : '—',
+      damage ? `${damage.matches} games` : '—'],
+  ];
+  return statTable(['Measure', 'Value', 'Sample'], [18, 7, 10], rows) +
+    '\nSpent = credits you paid. Gear value includes carried gear.' +
+    '\nSpend / round won = your spend ÷ team rounds won.' +
+    '\nDamage / 1k spent = your damage per 1,000 credits.';
 }
 
 function statTable(headers, widths, rows) {
@@ -281,7 +298,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
 
   if (recentMatches.length) {
     addFields({ name: 'Recent Sample Leaders & Economy',
-      value: sampleReadout(recentMatches, playerData.partySummary || []) });
+      value: sampleReadout(recentMatches, playerData.partySummary || []) + '\n\n' + economyReadout(recentMatches) });
   }
 
   const roundGroups = new Map([
@@ -308,8 +325,12 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     label, `${group.won}/${group.total}`, `${Math.round(100 * group.won / group.total)}%`,
   ]);
   if (roundRows.length) {
+    const firstKillRead = ['Team got first kill', 'Opponent got first kill'].flatMap((label, index) => {
+      const { won, total } = roundGroups.get(label);
+      return total ? [`Your team won **${won} of ${total}** rounds after ${index === 0 ? 'getting' : 'giving up'} the first kill.`] : [];
+    }).join(' ');
     addFields({ name: '⚑ How Often Did Your Team Win the Round?',
-      value: statTable(['Situation', 'Won', 'Win %'], [24, 9, 5], roundRows) +
+      value: (firstKillRead ? firstKillRead + '\n' : '') + statTable(['Situation', 'Won', 'Win %'], [24, 9, 5], roundRows) +
         '\nEach row uses rounds with the required data. A round can count in both a side and a first-kill row.' });
   }
 
@@ -391,6 +412,26 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     else if (playerData.selectedFriend) parts.push('Your marked friend was not found in this sample.');
     if (comparison.length > rows.length) parts.push(`Showing ${rows.length} of ${comparison.length} players.`);
     addFields({ name: '👥 How You Played Together', value: parts.join('\n') });
+  }
+
+  const partnerSplits = comparePartyResults(recentMatches, parties);
+  if (partnerSplits.length) {
+    const record = ({ wins, games }) => `${wins}/${games} (${Math.round(100 * wins / games)}%)`;
+    const rows = partnerSplits.slice(0, 3).map((row) => [
+      row.riotId, record(row.withPartner), record(row.withoutPartner),
+    ]);
+    addFields({ name: 'With and Without Your Party Partner',
+      value: groupedStatTable(['Queued together', 'Queued apart'], [16, 16], rows) +
+        '\nMatch wins. Games with unknown party status are excluded.' });
+  }
+
+  if (playerData.savedPartyResults?.length) {
+    const record = ({ wins, games }) => `${wins}/${games} (${Math.round(100 * wins / games)}%)`;
+    const rows = playerData.savedPartyResults.slice(0, 3).map((row) =>
+      [row.riotId, record(row.together), record(row.apart)]);
+    addFields({ name: 'Saved Party Records · Same Act',
+      value: groupedStatTable(['Queued together', 'Queued apart'], [16, 16], rows) +
+        '\nFrom saved games. These are observed results from different matches.' });
   }
 
   const extraParts = [];

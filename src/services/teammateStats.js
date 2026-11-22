@@ -22,10 +22,36 @@ function tradesAfterDeath(match, playerId) {
   return credits;
 }
 
-function sameParty(player, teammate) {
+function partyId(player) {
   const id = typeof player?.party_id === 'string' ? player.party_id.trim() : '';
-  if (!id || /^0+$/.test(id.replaceAll('-', ''))) return false;
-  return typeof teammate?.party_id === 'string' && id === teammate.party_id.trim();
+  return id && !/^0+$/.test(id.replaceAll('-', '')) ? id : null;
+}
+
+function sameParty(player, teammate) {
+  const id = partyId(player);
+  return id !== null && id === partyId(teammate);
+}
+
+function comparePartyResults(matches, partners) {
+  const seen = new Set();
+  return partners.map((partner) => {
+    seen.clear();
+    const withPartner = { wins: 0, games: 0 };
+    const withoutPartner = { wins: 0, games: 0 };
+    for (const match of matches) {
+      if (!match.matchId || seen.has(match.matchId) || typeof match.isWin !== 'boolean') continue;
+      seen.add(match.matchId);
+      const roster = match.teammates || [];
+      const member = roster.find((player) => (player.puuid || (player.name && player.tag
+        ? `${player.name}#${player.tag}`.toLowerCase() : null)) === partner.key);
+      const group = member?.sameParty === true ? withPartner
+        : match.partyCheckComplete ? withoutPartner : null;
+      if (!group) continue;
+      group.games++;
+      if (match.isWin) group.wins++;
+    }
+    return { ...partner, withPartner, withoutPartner };
+  }).filter((row) => row.withPartner.games && row.withoutPartner.games);
 }
 
 function summarizeTeammates(matches, friend, { partyOnly = false } = {}) {
@@ -41,7 +67,7 @@ function summarizeTeammates(matches, friend, { partyOnly = false } = {}) {
       const key = teammate.puuid || riotId?.toLowerCase();
       if (!key || counted.has(key)) continue;
       counted.add(key);
-      const row = rows.get(key) || { key, riotId, agent: teammate.agent, games: 0, wins: 0, decided: 0, trades: 0, tradeGames: 0, roundDiff: 0, roundGames: 0 };
+      const row = rows.get(key) || { key, riotId, puuid: teammate.puuid, agent: teammate.agent, games: 0, wins: 0, decided: 0, trades: 0, tradeGames: 0, roundDiff: 0, roundGames: 0 };
       row.games++;
       if (Number.isFinite(match.roundDiff)) {
         row.roundDiff += match.roundDiff;
@@ -63,4 +89,4 @@ function summarizeTeammates(matches, friend, { partyOnly = false } = {}) {
     .sort((a, b) => Number(b.friend) - Number(a.friend) || b.games - a.games || a.riotId.localeCompare(b.riotId));
 }
 
-module.exports = { tradesAfterDeath, summarizeTeammates, sameParty };
+module.exports = { tradesAfterDeath, summarizeTeammates, sameParty, partyId, comparePartyResults };

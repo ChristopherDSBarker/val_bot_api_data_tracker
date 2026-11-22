@@ -1,4 +1,11 @@
 node_modules/
 .env
+.env.*
+!.env.example
 .DS_Store
 *.log
+
+/data/
+
+# Local patch backups in the project root
+/*.diff

@@ -1,3 +1,4 @@
+const { matchStore, historicalPartySplits } = require('../services/store');
 /**
  * /valorant-profile command - Display Valorant player profile stats
  */
@@ -124,6 +125,21 @@ module.exports = {
         return;
       }
 
+      const partySummary = summarizeTeammates(recentMatches, friend, { partyOnly: true });
+      let savedPartyResults = [];
+      // Store only the current v4 sample, never mock entries or the stored-history fallback.
+      if (process.env.ENABLE_MATCH_HISTORY === 'true' && process.env.USE_MOCK_DATA !== 'true' &&
+          interaction.guildId && (account?.puuid || experimentalEnhancements?.account?.puuid)) {
+        try {
+          const puuid = account?.puuid || experimentalEnhancements.account.puuid;
+          const history = await matchStore.recordAndRead(interaction.guildId, puuid, recentMatches.filter((match) => !match.dataSource));
+          const latest = [...history].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))[0];
+          savedPartyResults = historicalPartySplits(history, interaction.guildId, latest?.actId, partySummary);
+        } catch (error) {
+          console.warn('[HISTORY] Saved comparisons unavailable:', error.code || error.name);
+        }
+      }
+
       // Merge MMR data into profile if both available, or use what we have
       const mergedData = {
         ...playerProfile,
@@ -133,7 +149,8 @@ module.exports = {
         career: experimentalEnhancements?.career || null,
         mapSummary: summarizeMaps(recentMatches),
         teammateSummary: summarizeTeammates(recentMatches, friend),
-        partySummary: summarizeTeammates(recentMatches, friend, { partyOnly: true }),
+        partySummary,
+        savedPartyResults,
         selectedFriend: friend,
         // Ensure we preserve profile-specific fields even if MMR is missing
         riotId: playerProfile?.riotId || `${account?.name || name}#${account?.tag || tag}`,

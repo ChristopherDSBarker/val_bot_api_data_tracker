@@ -224,7 +224,7 @@ function averageSamples(values) {
 }
 
 function isExperimentalValorantPipelineEnabled() {
-  return process.env.ENABLE_EXPERIMENTAL_VALORANT_PIPELINE === 'true';
+  return process.env.ENABLE_EXPERIMENTAL_VALORANT_PIPELINE !== 'false';
 }
 
 function isValorantApiDebugEnabled() {

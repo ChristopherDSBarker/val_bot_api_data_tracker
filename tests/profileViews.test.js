@@ -59,5 +59,22 @@ test('teammate comparison shows one row per player and uses party wins when avai
   const card = createProfileEmbed({ teammateSummary: [teammate], partySummary: [party] }).toJSON();
   const table = card.fields.find((field) => field.name.includes('How You Played Together')).value;
   assert.equal(table.match(/Skydemo#7618/g).length, 1);
-  assert.match(table, /Party\s+1\/5\s+20%\s+-2\s+3\/5/);
+  const tables = [...table.matchAll(/```\n([\s\S]*?)\n```/g)];
+  assert.equal(tables.length, 1);
+  assert.ok(tables.every(([, body]) => body.split('\n').every((line) => line.length <= 37)));
+
+  assert.match(table, /Skydemo#7618\nParty\s+1\/5\s+20%\s+-2\s+3\/5/);
+});
+
+test('progress keeps the full map, agent, and side on their own line', () => {
+  const recentMatches = Array.from({ length: 10 }, (_, i) => ({
+    matchId: String(i), seasonId: 'act', startedAt: new Date(Date.UTC(2026, 10, i + 1)).toISOString(),
+    map: 'Sunset', agent: 'Jett',
+    roundResults: Array.from({ length: i < 5 ? (i < 2 ? 3 : 2) : (i === 9 ? 4 : 5) },
+      (_, round) => ({ side: 'attack', won: i < 5 ? i === 0 && round === 0 : i < 7 || i === 7 && round < 3 })),
+  }));
+  const card = createProfileEmbed({}, { recentMatches }).toJSON();
+  const progress = card.fields.find((field) => field.name.includes('Compare Your')).value;
+  assert.match(progress, /Earlier 5\s+Latest 5/);
+  assert.match(progress, /Sunset \/ Jett \/ attack\n1\/12 \(8%\)\s+13\/24 \(54%\)/);
 });

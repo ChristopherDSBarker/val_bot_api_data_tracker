@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node src/index.js"
+    "dev": "node src/index.js",
+    "test": "node --test tests/*.test.js"
   },
   "keywords": [
     "discord",
@@ -16,8 +17,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "discord.js": "^14.13.0",
     "axios": "^1.6.0",
+    "discord.js": "^14.13.0",
     "dotenv": "^16.3.1"
   },
   "engines": {

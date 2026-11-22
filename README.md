@@ -48,7 +48,9 @@ The card shows headshots as a share of **recorded hits**. It shows damage delta 
 - If the API is rate-limited, give it time before retrying. The bot shares duplicate requests and respects a cooldown.
 - To troubleshoot with optional beta features disabled, run `ENABLE_EXPERIMENTAL_VALORANT_PIPELINE=false npm start`.
 - For a mock profile, set `USE_MOCK_DATA=true`. Discord credentials are still required for Discord login.
-- Run the local regression suite with `node --test tests/*.test.js`. The tests run without a Discord login.
+- Run the local regression suite with `npm test`. The tests run without a Discord login.
+
+If a report exceeds the card’s space, additional sections go into an attached `ranked-report-details.txt` file. The bot needs the server’s **Attach Files** permission to send it. The experimental pipeline defaults to enabled and can be disabled with the startup command above.
 
 ## Data coverage
 

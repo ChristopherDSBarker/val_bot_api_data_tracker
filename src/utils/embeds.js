@@ -53,25 +53,36 @@ function sampleReadout(matches, parties) {
 }
 
 function statTable(headers, widths, rows) {
-  const line = (values) => values.map((value, index) =>
-    String(value ?? '—').replace(/[`\r\n]/g, ' ').slice(0, widths[index]).padEnd(widths[index])
-  ).join('  ').trimEnd();
-  const lines = [line(headers)];
-  let length = lines[0].length;
-  for (const row of rows) {
-    const next = line(row);
-    if (length + next.length > 940) {
-      lines.push('… more rows');
-      break;
-    }
-    lines.push(next);
-    length += next.length + 1;
+  const lines = [];
+  for (const row of [headers, ...rows]) {
+    const cells = row.map((value, index) => {
+      const characters = Array.from(String(value ?? '—').replace(/[`\r\n]/g, ' '));
+      const chunks = [];
+      for (let i = 0; i < characters.length; i += widths[index]) {
+        chunks.push(characters.slice(i, i + widths[index]).join(''));
+      }
+      return chunks;
+    });
+    const height = Math.max(1, ...cells.map((cell) => cell.length));
+    const next = Array.from({ length: height }, (_, line) => cells
+      .map((cell, index) => (cell[line] || '').padEnd(widths[index])).join(' ').trimEnd());
+    lines.push(...next);
   }
   return '\`\`\`\n' + lines.join('\n') + '\n\`\`\`';
 }
 
+// A full-width label sits above each numeric row, so long names never consume a stat column.
+function groupedStatTable(headers, widths, rows) {
+  const clean = (text) => String(text).replace(/[`\r\n]/g, ' ');
+  const body = (table) => table.split('\n').slice(1, -1);
+  const [header] = body(statTable(headers, widths, []));
+  const lines = rows.flatMap(([label, ...values]) => [
+    clean(label), ...body(statTable(headers, widths, [values])).slice(1), '',
+  ]);
+  return '```\n' + [header, '', ...lines].join('\n').trimEnd() + '\n```';
+}
+
 function matchTable(matches, rrByMatch) {
-  const cell = (value, width) => String(value ?? '—').replace(/[`\r\n]/g, ' ').slice(0, width).padEnd(width);
   const rows = matches.slice(0, 10).map((match) => {
     const result = match.isWin === true ? 'W' : match.isWin === false ? 'L' : '—';
     const score = Number.isFinite(match.roundsWon) && Number.isFinite(match.roundsLost)
@@ -79,10 +90,16 @@ function matchTable(matches, rrByMatch) {
     const kda = [match.kills, match.deaths, match.assists].every(Number.isFinite)
       ? `${match.kills}/${match.deaths}/${match.assists}` : '—';
     const performance = Number.isFinite(match.performanceScore) ? match.performanceScore.toFixed(1) : '—';
-    return [cell(result, 1), cell(score, 5), cell(match.map, 9), cell(match.agent, 9),
-      cell(kda, 8), cell(Number.isFinite(match.acsPerRound) ? match.acsPerRound.toFixed(0) : '—', 4), cell(performance, 6), formatRRChange(rrByMatch.get(match.matchId)?.rrChange) ?? '—'].join(' ');
+    return [result, score, match.map, match.agent, kda,
+      Number.isFinite(match.acsPerRound) ? match.acsPerRound.toFixed(0) : '—',
+      performance, formatRRChange(rrByMatch.get(match.matchId)?.rrChange) ?? '—'];
   });
-  return ['R Score Map       Agent     K/D/A    ACS  Perf   RR', ...rows].join('\n');
+  return [
+    statTable(['#', 'R', 'Score', 'Map', 'Agent'], [2, 1, 5, 13, 12],
+      rows.map((row, i) => [i + 1, ...row.slice(0, 4)])),
+    statTable(['#', 'K/D/A', 'ACS', 'Perf', 'RR'], [2, 10, 5, 8, 6],
+      rows.map((row, i) => [i + 1, ...row.slice(4)])),
+  ];
 }
 
 function buildRRHistory(history) {
@@ -106,6 +123,8 @@ function rrBars(entries) {
  * @param {array} legacyRecentMatches - backward-compatible recent matches argument
  * @returns {EmbedBuilder}
  */
+const reportFields = new WeakMap();
+
 function createProfileEmbed(playerData, context = {}, legacyMMRData = null, legacyRecentMatches = null) {
   const isContextBundle = Object.prototype.hasOwnProperty.call(context, 'profile')
     || Object.prototype.hasOwnProperty.call(context, 'mmr')
@@ -171,6 +190,8 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     .setTitle(String(riotId).slice(0, 256))
     .setDescription(`**${descriptionParts[0]}**${descriptionParts.slice(1).map((part) => `  ·  ${part}`).join('')}\n\n**At a glance**\n${recap}${momentum}`);
 
+  const fields = [];
+  const addFields = (...entries) => fields.push(...entries);
   const cardImage = accountData?.card?.small || accountData?.card?.wide || accountData?.card?.large;
   if (cardImage) {
     embed.setThumbnail(cardImage);
@@ -183,7 +204,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
       `**Most played in sample:** ${topAgents.length > 0 ? topAgents.join(', ') : 'N/A'}`,
     ];
 
-    embed.addFields({
+    addFields({
       name: '◆ Competitive Snapshot',
       value: recentValue.join('\n'),
       inline: true,
@@ -194,17 +215,72 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   const combatValue = matchesAvailable ? [
     `**${formatters.formatKDA(kills, deaths, assists)}** K/D/A  ·  ${formatters.formatKD(kills, deaths)} K/D`,
     `**${formatters.formatACS(acsPerRound)}** ACS  ·  ${headshotPercent == null ? 'N/A' : formatters.formatPercent(headshotPercent)} headshots by hit${playerData.recordedHits ? ` (${playerData.recordedHits} hits)` : ''}`,
-    `**${formatters.formatADR(adrPerRound)}** ADR  ·  ${formatters.formatDamageDelta(damageDeltaPerRound)} DDΔ`,
+    `**Damage per round:** ${formatters.formatADR(adrPerRound)} dealt · ${formatters.formatDamageDelta(damageDeltaPerRound)} net`,
   ] : ['Competitive combat data unavailable.'];
 
-  embed.addFields({
+  addFields({
     name: 'Combat',
     value: combatValue.join('\n'),
     inline: true,
   });
 
+  // Keep the existing profile fields and add bounded, independently optional surfaces.
+  const career = playerData.career;
+  const safeLabel = (value) => String(value).replace(/[*`~|<>@]/g, '').slice(0, 70);
+  const prestige = playerData.lifetimePrestige && typeof playerData.lifetimePrestige === 'object'
+    ? Object.entries(playerData.lifetimePrestige).filter(([, value]) => Number.isFinite(value?.count)) : [];
+  const careerSections = [
+    ['🏅 Rank Legacy', ['Rank', 'Times'], [23, 8], prestige.map(([rank, value]) => [rank, `×${value.count}`])],
+    ['◆ Agent Mastery', ['Agent', 'Level'], [23, 8], (career?.mastery || []).map(({ agent, level }) => [agent, `Lv. ${level}`])],
+    ['🏅 Lifetime Accolades', ['Accolade', 'Earned'], [26, 8], (career?.accolades || []).map(({ label, count }) => [label.replace(/_/g, ' '), count])],
+    [`★ Act Accolades · ${String(career?.actAccolades?.label || '').slice(0, 50)}`, ['Accolade', 'Earned'], [26, 8],
+      (career?.actAccolades?.entries || []).map(({ label, count }) => [label.replace(/_/g, ' '), count])],
+  ];
+  for (const [name, headers, widths, rows] of careerSections) {
+    let batch = [];
+    let part = 1;
+    const add = () => addFields({ name: part++ === 1 ? name : `${name} · Continued`,
+      value: statTable(headers, widths, batch) });
+    for (const row of rows) {
+      if (batch.length && statTable(headers, widths, [...batch, row]).length > 1000) {
+        add();
+        batch = [];
+      }
+      batch.push(row);
+    }
+    if (batch.length) add();
+  }
+  const missingCareer = [
+    !career?.mastery?.length ? 'Agent Mastery' : null,
+    !career?.accolades?.length ? 'Accolades' : null,
+  ].filter(Boolean);
+  if (missingCareer.length) {
+    addFields({ name: 'Career Data Availability', value: career
+      ? `No displayable data from HenrikDev for: ${missingCareer.join(', ')}.`
+      : `${missingCareer.join(' and ')} require experimental career data.`, inline: false });
+  }
+  const maps = Array.isArray(playerData.mapSummary) ? playerData.mapSummary : [];
+  if (maps.length) {
+    const best = maps.filter((row) => row.decided >= 5 && row.winRate !== null)
+      .sort((a, b) => b.winRate - a.winRate || b.games - a.games)[0];
+    const sideRecord = (side) => side?.total ? `${side.wins}/${side.total}` : '—';
+    const rows = maps.map((row) => [
+      safeLabel(row.map), `${row.wins}/${row.decided}`,
+      row.winRate === null ? null : `${row.winRate.toFixed(0)}%`,
+      row.performanceScore === null ? null : `${row.performanceScore.toFixed(1)} (${row.performanceSamples})`,
+      sideRecord(row.attack), sideRecord(row.defense),
+    ]);
+    const results = statTable(['Map', 'Wins', 'Win %', 'Avg perf'], [13, 5, 5, 12], rows.map((row) => row.slice(0, 4)));
+    const sides = statTable(['Map', 'Attack', 'Defense'], [13, 8, 8], rows.map((row) => [row[0], ...row.slice(4)]));
+    const summary = best ? `Best by win rate: ${safeLabel(best.map)} (minimum 5 results).`
+      : 'Best map requires 5 known results on one map.';
+    addFields({ name: '🗺 Competitive Maps', value: `${results}\n${summary}\nAvg perf = Performance Score (matches with a score).\nRecent sample only; not Riot Map Rating.` },
+      { name: 'Competitive Maps · Rounds Won by Side', value: sides + '\nRounds won out of known rounds.' });
+
+  }
+
   if (recentMatches.length) {
-    embed.addFields({ name: 'Recent Sample Leaders & Economy',
+    addFields({ name: 'Recent Sample Leaders & Economy',
       value: sampleReadout(recentMatches, playerData.partySummary || []) });
   }
 
@@ -232,7 +308,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     label, `${group.won}/${group.total}`, `${Math.round(100 * group.won / group.total)}%`,
   ]);
   if (roundRows.length) {
-    embed.addFields({ name: '⚑ How Often Did Your Team Win the Round?',
+    addFields({ name: '⚑ How Often Did Your Team Win the Round?',
       value: statTable(['Situation', 'Won', 'Win %'], [24, 9, 5], roundRows) +
         '\nEach row uses rounds with the required data. A round can count in both a side and a first-kill row.' });
   }
@@ -247,25 +323,28 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     const direction = Math.sign(recent.won * prior.total - prior.won * recent.total);
     const comparison = direction > 0 ? 'won a larger share of rounds' : direction < 0
       ? 'won a smaller share of rounds' : 'won the same share of rounds';
-    embed.addFields({ name: '↗ Compare Your Recent Games',
+    addFields({ name: '↗ Compare Your Recent Games',
       value: `On **${escapeMarkdown(recent.map)}** playing **${escapeMarkdown(recent.agent)}** on ${recent.side}, you ${comparison} in the newer block.\n` +
-        statTable(['Map / agent / side', 'Earlier 5', 'Latest 5'], [27, 13, 13], rows) +
+        groupedStatTable(['Earlier 5', 'Latest 5'], [14, 14], rows) +
         '\nSame act. Each row needs 10 known rounds per block. Matchups and teammates may differ.' });
   } else if (recentMatches.length >= 10) {
-    embed.addFields({ name: '↗ Compare Your Recent Games',
+    addFields({ name: '↗ Compare Your Recent Games',
       value: 'No comparable split in this sample. The comparison needs two sets of five matches in one act and at least 10 known rounds in each set on the same map, agent, and side.' });
   }
 
   const rrByMatch = new Map(mmrHistory.filter((entry) => entry?.matchId).map((entry) => [entry.matchId, entry]));
   if (recentMatches.length) {
-    embed.addFields({ name: '▤ Recent Competitive · Newest First',
-      value: `\`\`\`\n${matchTable(recentMatches, rrByMatch)}\n\`\`\`\nPerf = Performance Score · — = unavailable` });
+    const [results, stats] = matchTable(recentMatches, rrByMatch);
+    addFields(
+      { name: '▤ Recent Competitive · Newest First', value: results },
+      { name: 'Recent Competitive · Match Stats', value: stats + '\nACS = Average Combat Score · Perf = Performance Score · — = unavailable' },
+    );
   }
 
   const rrHistory = buildRRHistory(mmrHistory);
   if (rrHistory.length) {
     const net = rrHistory.reduce((sum, entry) => sum + (entry.rrChange ?? entry.rr_change), 0);
-    embed.addFields({
+    addFields({
       name: '↕ Observed RR Changes',
       inline: true,
       value: `Last ${rrHistory.length} updates · oldest first · net ${formatRRChange(net)} RR\n\`\`\`\n${rrBars(rrHistory)}\n\`\`\``,
@@ -274,7 +353,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
 
   const squad = recentMatches[0]?.teammates;
   if (squad?.length) {
-    embed.addFields({
+    addFields({
       name: 'Latest Shown Match · Teammates',
       inline: true,
       value: squad.map(({ agent, name, tag, kills, deaths, assists }) => {
@@ -304,65 +383,17 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     ]);
     const parts = [];
     if (rows.length) {
-      parts.push(statTable(['Player', 'Group', 'Wins', 'Win %', 'Margin', 'Trades'], [19, 5, 5, 5, 6, 7], rows));
+      parts.push(groupedStatTable(['Group', 'Wins', 'Win %', 'Margin', 'Trades'], [5, 5, 5, 7, 8], rows));
       parts.push('**Party** = queued together. **Team** = played on your side. Party rows count only party games.');
       parts.push('**Margin** = average rounds won minus lost. **Trades** = times they avenged your death within 5 seconds / games with kill records.');
     }
     if (comparison.some((row) => row.friend)) parts.push('`*` marks your friend.');
     else if (playerData.selectedFriend) parts.push('Your marked friend was not found in this sample.');
     if (comparison.length > rows.length) parts.push(`Showing ${rows.length} of ${comparison.length} players.`);
-    embed.addFields({ name: '👥 How You Played Together', value: parts.join('\n') });
+    addFields({ name: '👥 How You Played Together', value: parts.join('\n') });
   }
 
   const extraParts = [];
-
-  // Keep the existing profile fields and add bounded, independently optional surfaces.
-  const career = playerData.career;
-  const safeLabel = (value) => String(value).replace(/[*`~|<>@]/g, '').slice(0, 70);
-  const prestige = playerData.lifetimePrestige && typeof playerData.lifetimePrestige === 'object'
-    ? Object.entries(playerData.lifetimePrestige).filter(([, value]) => Number.isFinite(value?.count)) : [];
-  const careerRows = [
-    ...prestige.map(([rank, value]) => ['Prestige', rank, `×${value.count}`]),
-    ...(career?.mastery || []).map(({ agent, level }) => ['Mastery', agent, `Lv. ${level}`]),
-    ...(career?.accolades || []).map(({ label, count }) => ['Accolade', label.replace(/_/g, ' '), `×${count}`]),
-  ];
-  if (careerRows.length) {
-    embed.addFields({ name: '🏅 Career',
-      value: statTable(['Category', 'Item', 'Count/Lv.'], [8, 24, 9], careerRows) });
-  }
-  const actAccolades = career?.actAccolades;
-  if (actAccolades?.entries?.length) {
-    embed.addFields({ name: '★ Accolades in the Latest Match’s Act',
-      value: `Act: ${escapeMarkdown(String(actAccolades.label).slice(0, 50))}\n` +
-        statTable(['Accolade', 'Earned'], [26, 8], actAccolades.entries.map(({ label, count }) =>
-          [label.replace(/_/g, ' '), count])) });
-  }
-  const missingCareer = [
-    !career?.mastery?.length ? 'Agent Mastery' : null,
-    !career?.accolades?.length ? 'Accolades' : null,
-  ].filter(Boolean);
-  if (missingCareer.length) {
-    embed.addFields({ name: 'Career Data Availability', value: career
-      ? `No displayable data from HenrikDev for: ${missingCareer.join(', ')}.`
-      : `${missingCareer.join(' and ')} require experimental career data.`, inline: false });
-  }
-  const maps = Array.isArray(playerData.mapSummary) ? playerData.mapSummary : [];
-  if (maps.length) {
-    const best = maps.filter((row) => row.decided >= 5 && row.winRate !== null)
-      .sort((a, b) => b.winRate - a.winRate || b.games - a.games)[0];
-    const sideRecord = (side) => side?.total ? `${side.wins}/${side.total}` : '—';
-    const rows = maps.map((row) => [
-      safeLabel(row.map), `${row.wins}/${row.decided}`,
-      row.winRate === null ? null : `${row.winRate.toFixed(0)}%`,
-      row.performanceScore === null ? null : `${row.performanceScore.toFixed(1)} (${row.performanceSamples})`,
-      sideRecord(row.attack), sideRecord(row.defense),
-    ]);
-    const table = statTable(['Map', 'Wins', 'Win %', 'Avg perf', 'Attack', 'Defense'], [10, 5, 5, 10, 6, 7], rows);
-    const summary = best ? `Best by win rate: ${safeLabel(best.map)} (minimum 5 results).`
-      : 'Best map requires 5 known results on one map.';
-    embed.addFields({ name: '🗺 Competitive Maps', value: `${table}\n${summary}\nAttack/defense = rounds won out of known rounds.\nAvg perf = Performance Score (matches with a score).\nRecent sample only; not Riot Map Rating.` });
-
-  }
 
   if (level !== 'N/A') {
     extraParts.push(`**Level:** ${level}`);
@@ -385,7 +416,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   }
 
   if (extraParts.length > 0) {
-    embed.addFields({
+    addFields({
       name: 'Account & Rank Details',
       value: extraParts.join(' · '),
       inline: false,
@@ -400,10 +431,12 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   } else if (accountData && !profileData && !mmrData) {
     footerText = 'HenrikDev account data only';
   }
-  footerText += ' · Up to 10 Competitive matches · HS: headshot rate · ACS: combat score/round · ADR: damage/round · DDΔ: damage dealt minus received/round';
+  footerText += ' · Up to 10 Competitive matches';
 
   embed.setFooter({ text: footerText });
 
+  reportFields.set(embed, fields);
+  embed.setFields(fields.filter((field) => field.value.length <= 1024).slice(0, 25));
   return embed;
 }
 
@@ -487,6 +520,7 @@ function createMMREmbed(mmrData) {
     currentRank = 'N/A',
     currentRR = null,
     lastRRChange = null,
+    elo = null,
     gamesNeededForRating = null,
     leaderboardRank = null,
     peakRank = 'N/A',
@@ -533,8 +567,34 @@ function createMMREmbed(mmrData) {
   return embed;
 }
 
+// Discord applies its text limit across all embeds on a single message.
+function createProfileReply(embed) {
+  const { fields: visibleFields = [], ...header } = embed.toJSON();
+  const allFields = reportFields.get(embed) || visibleFields;
+  const baseLength = [header.title, header.description, header.author?.name, header.footer?.text]
+    .reduce((sum, text) => sum + (text?.length || 0), 0);
+  const priority = (field) => /Compare Your|How Often|Sample Leaders|How You Played Together/.test(field.name) ? 1 : 0;
+  let length = baseLength;
+  const included = new Set();
+  for (const field of [...allFields].sort((a, b) => priority(a) - priority(b))) {
+    const size = field.name.length + field.value.length;
+    if (field.value.length > 1024 || included.size >= 24 || length + size > 5500) continue;
+    included.add(field);
+    length += size;
+  }
+  const reply = { embeds: [{ ...header, fields: allFields.filter((field) => included.has(field)) }], allowedMentions: { parse: [] } };
+  if (included.size !== allFields.length) {
+    const overflow = allFields.filter((field) => !included.has(field));
+    reply.content = `The attached ranked report contains ${overflow.length} additional section(s).`;
+    reply.files = [{ name: 'ranked-report-details.txt', attachment: Buffer.from(
+      [header.title, ...overflow.map((field) => `${field.name}\n${field.value.replace(/^```$/gm, '')}`)].join('\n\n'), 'utf8') }];
+  }
+  return reply;
+}
+
 module.exports = {
   createProfileEmbed,
+  createProfileReply,
   createMatchEmbed,
   createRecentMatchesOverviewEmbed,
   createErrorEmbed,

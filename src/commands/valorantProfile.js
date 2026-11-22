@@ -160,7 +160,7 @@ module.exports = {
         mmrHistory,
         recentMatches,
       });
-      await interaction.editReply({ embeds: [profileEmbed], allowedMentions: { parse: [] } });
+      await interaction.editReply(embeds.createProfileReply(profileEmbed));
     } catch (error) {
       console.error('[ERROR] Valorant profile command failed:', error);
       const errorEmbed = embeds.createErrorEmbed(

@@ -277,19 +277,6 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     inline: true,
   });
 
-  const goal = playerData.goalStatus;
-  const goalLines = playerData.goalNotice ? [playerData.goalNotice] : [];
-  if (goal) {
-    const { current, baseline, target, window } = goal;
-    const record = (row) => row.rounds
-      ? `${row.won}/${row.rounds} first kills (${Math.round(100 * row.won / row.rounds)}%)`
-      : 'No known openings yet.';
-    const progress = current.games >= window
-      ? (current.won * 100 >= target * current.rounds ? 'Target met.' : 'Target missed.')
-      : `${current.games}/${window} matches with known openings.`;
-    goalLines.push(`**Your first-kill goal:** ${target}% of known openings.`,
-      `**Before:** ${record(baseline)}`, `**Since setting it:** ${record(current)} ${progress}`);
-  }
   const coach = reviewLatestMatch(recentMatches);
   if (coach) {
     const { match, score, opened, conceded, personalFirstKills, personalCoverage, openingBaseline, practice } = coach;
@@ -311,9 +298,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
       }
     }
     readout.push(`**Replay cue:** ${practice}`);
-    addFields({ name: '🎯 Coach · Latest Match', value: [...goalLines, ...readout].join('\n') });
-  } else if (goalLines.length) {
-    addFields({ name: '🎯 Coach · Your Goal', value: goalLines.join('\n') });
+    addFields({ name: '🎯 Coach · Latest Match', value: readout.join('\n') });
   }
   const session = latestSession(recentMatches, mmrHistory);
   if (session) {

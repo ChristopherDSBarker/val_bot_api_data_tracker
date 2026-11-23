@@ -3,10 +3,9 @@ const { matchStore, historicalPartySplits } = require('../services/store');
  * /valorant-profile command - Display Valorant player profile stats
  */
 
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const valorantApi = require('../services/valorantApi');
 const embeds = require('../utils/embeds');
-const { coachGoals } = require('../services/coachGoals');
 const { sendProfilePages } = require('../utils/profilePagination');
 const { summarizeTeammates } = require('../services/teammateStats');
 const { summarizeMaps } = require('../services/valorantCareer');
@@ -41,16 +40,13 @@ module.exports = {
           { name: 'Japan', value: 'jp' },
           { name: 'Asia-Pacific', value: 'ap' }
         )
-    )
-    .addIntegerOption((option) => option.setName('goal')
-      .setDescription('Private goal: your share of first kills over five matches').setMinValue(0).setMaxValue(100)),
+    ),
 
   async execute(interaction) {
     let deferred = false;
     try {
       // Defer the reply since the API call might take a moment
-      const target = interaction.options.getInteger?.('goal');
-      await interaction.deferReply(Number.isInteger(target) ? { flags: MessageFlags.Ephemeral } : {});
+      await interaction.deferReply();
       deferred = true;
 
       const name = interaction.options.getString('name');
@@ -142,22 +138,6 @@ module.exports = {
         }
       }
 
-      let goalStatus = null;
-      let goalNotice = null;
-      if (Number.isInteger(target)) {
-        if (!interaction.guildId || !interaction.user?.id || !puuid || process.env.USE_MOCK_DATA === 'true') {
-          goalNotice = 'A saved goal needs a live Riot account and a Discord server.';
-        } else {
-          try {
-            const identity = [interaction.guildId, interaction.user.id, puuid, region, 'personal-first-kill-v1'];
-            goalStatus = await coachGoals.checkIn(identity, recentMatches.filter((match) => !match.dataSource), target);
-          } catch (error) {
-            console.warn('[COACH] Saved goal unavailable:', error.code || error.name);
-            goalNotice = 'Saved goal unavailable right now. The match review is still available.';
-          }
-        }
-      }
-
       // Merge MMR data into profile if both available, or use what we have
       const mergedData = {
         ...playerProfile,
@@ -169,8 +149,6 @@ module.exports = {
         teammateSummary: summarizeTeammates(recentMatches),
         partySummary,
         savedPartyResults,
-        goalStatus,
-        goalNotice,
         // Ensure we preserve profile-specific fields even if MMR is missing
         riotId: playerProfile?.riotId || `${account?.name || name}#${account?.tag || tag}`,
         name: playerMMR?.name || account?.name || name,

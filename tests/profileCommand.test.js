@@ -5,15 +5,15 @@ const path = require('node:path');
 const api = require('../src/services/valorantApi');
 const profile = require('../src/commands/valorantProfile');
 
-test('one command shows automatic coaching with the existing lookup inputs and an optional goal', async (t) => {
+test('one command shows automatic coaching with only name, tag, and region', async (t) => {
   assert.deepEqual(fs.readdirSync(path.join(__dirname, '../src/commands')).filter((name) => name.endsWith('.js')),
     ['valorantProfile.js']);
   const config = profile.data.toJSON();
-  assert.deepEqual(config.options.map(({ name }) => name), ['name', 'tag', 'region', 'goal']);
+  assert.deepEqual(config.options.map(({ name }) => name), ['name', 'tag', 'region']);
   assert.ok(config.options.find((option) => option.name === 'region').choices
     .some(({ name, value }) => name === 'North America' && value === 'na'));
 
-  const match = { map: 'Sunset', isWin: false, roundsWon: 11, roundsLost: 13 };
+  const match = { map: 'Sunset', agent: 'Jett', role: 'Duelist', isWin: false, roundsWon: 11, roundsLost: 13 };
   t.mock.method(api, 'getPlayerAccount', async () => ({ puuid: 'player', name: 'Test', tag: 'NA1' }));
   t.mock.method(api, 'getPlayerProfile', async () => null);
   t.mock.method(api, 'getPlayerMMR', async () => null);
@@ -29,33 +29,8 @@ test('one command shows automatic coaching with the existing lookup inputs and a
   const fields = message.embeds[0].fields;
   assert.ok(fields.some((field) => field.name.includes('Latest Match') && field.value.includes('Replay cue')));
   assert.ok(fields.some((field) => field.name.includes('Recent Competitive')));
+  assert.ok(fields.some((field) => field.value.includes('Duelist 0/1')));
   assert.equal(message.files, undefined);
-  const { coachGoals } = require('../src/services/coachGoals');
-  const previousMock = process.env.USE_MOCK_DATA;
-  process.env.USE_MOCK_DATA = 'false';
-  t.after(() => {
-    if (previousMock === undefined) delete process.env.USE_MOCK_DATA;
-    else process.env.USE_MOCK_DATA = previousMock;
-  });
-  const { matchStore } = require('../src/services/store');
-  t.mock.method(matchStore, 'recordAndRead', async () => []);
-  const checkIn = t.mock.method(coachGoals, 'checkIn', async (identity, matches, target) => {
-    assert.deepEqual(identity, ['guild', 'requester', 'player', 'na', 'personal-first-kill-v1']);
-    assert.deepEqual(matches, [match]);
-    assert.equal(target, 14);
-    return { target, window: 5, baseline: { rounds: 20, won: 3 }, current: { games: 3, rounds: 42, won: 5 } };
-  });
-  const { MessageFlags } = require('discord.js');
-  await profile.execute({
-    guildId: 'guild', user: { id: 'requester' },
-    options: { getString: (key) => ({ name: 'Test', tag: 'NA1', region: 'na' })[key] ?? null,
-      getInteger: () => 14 },
-    deferReply: async ({ flags }) => assert.equal(flags, MessageFlags.Ephemeral),
-    editReply: async (value) => { message = value; },
-  });
-  assert.match(message.embeds[0].fields.find((field) => field.name.includes('Latest Match')).value,
-    /14% of known openings.*5\/42 first kills/s);
-  assert.equal(checkIn.mock.callCount(), 1);
 
 });
 

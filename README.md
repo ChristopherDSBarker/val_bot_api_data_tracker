@@ -77,7 +77,3 @@ Run the usual `/valorant-profile` using your Riot ID and region. The report auto
 The role readout compares match win rates with your own recent baseline. It names a leading role only when at least two roles each have three known results. A single-map sample is labeled, and role-specific round counts appear when enough round data is available.
 
 The Coach section separates **your first kills per known opening** from **team rounds won after getting the first kill**. When the latest match has at least ten known openers and two earlier matches in the same act and role supply at least ten more, it shows a personal baseline and the change in percentage points.
-
-To track a personal opening-kill goal, add `goal:14` to the same command. The report is private when you supply a goal. This example tracks a target of getting the first kill in 14% of rounds where the opener is known. The team’s win rate after getting the first kill is shown separately.
-
-Run the command again with the **same** goal value to record progress. The bot checks up to five eligible new matches seen in the recent API window. It counts each match once and keeps known-act results separate. A different target starts a new block. Use regular check-ins so matches do not roll out of the recent window. Goals are stored locally under `data/coach-goals/`.

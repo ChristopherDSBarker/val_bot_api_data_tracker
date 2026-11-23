@@ -156,6 +156,7 @@ module.exports = {
         teammateSummary: summarizeTeammates(recentMatches),
         partySummary,
         savedPartyResults,
+        experimentalEnabled: valorantApi.isExperimentalValorantPipelineEnabled(),
         mockData: process.env.USE_MOCK_DATA === 'true',
         visibleRankResults,
         // Ensure we preserve profile-specific fields even if MMR is missing

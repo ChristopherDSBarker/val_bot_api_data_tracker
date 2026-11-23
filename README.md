@@ -81,3 +81,5 @@ The Coach section separates **your first kills per known opening** from **team r
 **Results by Opponents’ Visible Rank** appears when saved history contains at least 40 eligible games in a higher or lower opponent-rank group from the same act. Each match needs all five opponents’ reported ranks and your own reported rank. The bot averages ordered rank divisions to sort the match into a group. This is a comparison of visible ranks, and it does not adjust for your own team’s rank or estimate hidden MMR. Older records can lack both opponent ranks and linked RR.
 
 See the [report contract and release checklist](docs/report-contract.md) for the card’s units, sample gates, and verification steps.
+
+The coach is the first section when the latest match has a known result. **Sample Coverage** explains which records are available, and **Report Legend** defines the table labels. Use `/status` for a private health check showing API cache entries, saved server match count, last API status, and the source revision when available.

@@ -6,7 +6,19 @@ Player#NA1
 
 **At a glance**
 Won **5 of 10** recent Competitive matches with known results. Rank Rating moved **+100** over 5 recorded updates.
-Start with **Coach · Latest Match** for one replay question.
+Rank, momentum and the full report follow.
+
+[🎯 Coach · Latest Match]
+**Won 13–8 on Sunset.** · Jett (Duelist)
+**Replay cue:** Pick one lost round. Check where your nearest teammate was before the first fight.
+**Momentum:** +100 RR over 5 updates, all RR gains. Oldest first.
+```
+          │████       +20
+          │████       +20
+          │████       +20
+          │████       +20
+          │████       +20
+```
 
 [◆ Competitive Snapshot]
 **Matches reviewed:** 10
@@ -18,16 +30,13 @@ Start with **Coach · Latest Match** for one replay question.
 **N/A** ACS  ·  N/A headshots by hit
 **Damage per round:** N/A dealt · N/A net
 
-[🎯 Coach · Latest Match]
-**Won 13–8 on Sunset.** · Jett (Duelist)
-**Replay cue:** Pick one lost round. Check where your nearest teammate was before the first fight.
-
 [📋 Latest Session · Recent Sample]
 10 matches in the recent session. Won 5 of 10 matches with a known result.
 Observed RR: +10 across 10/10 matches.
 
 [Career Data Availability]
-Agent Mastery and Accolades require experimental career data.
+Agent Mastery: —
+Accolades: —
 
 [🗺 Competitive Maps]
 ```
@@ -48,9 +57,9 @@ Rounds won out of known rounds.
 [Recent Sample Leaders & Economy]
 **Highest agent win rate:** Jett · 5/10 wins
 Duelist 5/10 (50%)
-Your recent baseline: 5/10 (50%). Compare after 3 games in each of two roles.
-**Queue partner:** Need 3 confirmed party results with one player.
-**Gun:** Insufficient named gun events.
+Your recent baseline: 5/10 (50%).
+**Queue partner:** —
+**Gun:** —
 
 ```
 Measure            Value   Sample
@@ -59,14 +68,11 @@ Gear value / round —       —
 Spend / round won  —       —
 Damage / 1k spent  —       —
 ```
-Spent = credits you paid. Gear value includes carried gear.
-Spend / round won = your spend ÷ team rounds won.
-Damage / 1k spent = your damage per 1,000 credits.
 
 [↗ Compare Your Recent Games]
 Not enough matching rounds to compare. Each side needs 10 recorded rounds in both match blocks from the same act.
 
-[▤ Recent Competitive · Newest First]
+[▤ Match Log · 1 of 2]
 ```
 #  R Score Map           Agent
 1  W 13-8  Sunset        Jett
@@ -81,7 +87,7 @@ Not enough matching rounds to compare. Each side needs 10 recorded rounds in bot
 10 L 8-13  Sunset        Jett
 ```
 
-[Recent Competitive · Match Stats]
+[▤ Match Log · 2 of 2]
 ```
 #  K/D/A      ACS   Perf     RR
 1  18/12/4    —     242.0    +20
@@ -95,17 +101,7 @@ Not enough matching rounds to compare. Each side needs 10 recorded rounds in bot
 9  18/12/4    —     242.0    -18
 10 18/12/4    —     242.0    -18
 ```
-ACS = Average Combat Score · Perf = Performance Score · — = unavailable
-
-[↕ Observed RR Changes]
-Last 5 updates · oldest first · net +100 RR
-```
-          │████       +20
-          │████       +20
-          │████       +20
-          │████       +20
-          │████       +20
-```
+Match numbers link both panels, newest first.
 
 [RR After Wins and Losses]
 ```
@@ -122,7 +118,26 @@ Wins / games  Win %  Rounds/game
 Solo · you
 5W / 10G      50%    —
 ```
-Rounds/game = average rounds won minus lost.
-T = trades after your death. K/D = kills/deaths. G = games with data.
+
+[◆ Sample Coverage · 10 matches]
+```
+Measure       Requirement          Seen
+Agent leader  3 results per agent  1/1
+Role leader   3 results in 2 roles 1
+Queue partner 3 party results      0/0
+Weapon kills  1 logged gun match   0
+Economy       1 match with costs   0
+Career        Beta career data     0/2
+```
+— means unavailable or below the sample requirement. Agent and partner counts show how many qualified out of how many appeared.
+
+[Report Legend]
+**ACS** Average Combat Score
+**Damage / 1k spent** Your damage per 1,000 credits
+**G** Games with data · **Gear value** Includes carried gear
+**K/D/A** Kills, deaths, assists · **Perf** Performance Score
+**Rounds/game** Average rounds won minus lost · **RR** Rank Rating
+**Spend / round won** Your spend divided by team rounds won
+**Spent** Credits paid · **T** Trades after your death · **W** Wins
 
 HenrikDev rank and match data · Up to 10 Competitive matches

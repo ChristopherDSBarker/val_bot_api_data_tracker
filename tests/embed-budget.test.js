@@ -67,7 +67,7 @@ test('full profile keeps every report section across inline embeds', () => {
   const text = fields.map(({ name, value }) => `${name}\n${value}`).join('\n');
   for (const title of ['Competitive Snapshot', 'Combat', 'Rank Legacy', 'Agent Mastery', 'Lifetime Accolades',
     'Act Accolades', 'Competitive Maps', 'Rounds Won by Side', 'Sample Leaders & Economy', 'How Often',
-    'Compare Your Recent Games', 'Recent Competitive', 'Match Stats', 'Observed RR Changes',
+    'Compare Your Recent Games', 'Match Log · 1 of 2', 'Match Log · 2 of 2', 'Momentum', 'Sample Coverage', 'Report Legend',
     'Latest Shown Match', 'Who You Queued With', 'Account & Rank Details']) assert.ok(text.includes(title), title);
   const codeBlocks = [...fields.flatMap((field) => [...field.value.matchAll(/```\n([\s\S]*?)\n```/g)])];
   assert.ok(codeBlocks.length >= 8);

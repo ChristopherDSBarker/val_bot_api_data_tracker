@@ -22,14 +22,14 @@ function formatRRChange(value) {
 
 function roleReadout(matches) {
   const { baseline, roles } = summarizeRoles(matches, roleOf);
-  if (!roles.length) return 'Role results unavailable.';
+  if (!roles.length) return '**Role:** —';
   const percent = (wins, games) => Math.round(100 * wins / games);
   const eligible = roles.filter((row) => row.games >= 3)
     .sort((a, b) => b.wins / b.games - a.wins / a.games || b.games - a.games);
   const label = ({ role, games, wins }) => `${role} ${wins}/${games} (${percent(wins, games)}%)`;
   const reference = `Your recent baseline: ${baseline.wins}/${baseline.games} (${percent(baseline.wins, baseline.games)}%).`;
   if (eligible.length < 2) {
-    return `${roles.map(label).join(' · ')}\n${reference} Compare after 3 games in each of two roles.`;
+    return `${roles.map(label).join(' · ')}\n${reference}`;
   }
 
   const [first, second] = eligible;
@@ -51,7 +51,7 @@ function roleReadout(matches) {
   return lines.join('\n');
 }
 
-function sampleReadout(matches, parties) {
+function sampleReadout(matches, parties, coverage) {
   const weapons = new Map();
   const agents = new Map();
   for (const match of matches) {
@@ -68,14 +68,17 @@ function sampleReadout(matches, parties) {
     .sort((a, b) => b.wins / b.games - a.wins / a.games || b.games - a.games)[0];
   const partner = [...parties].filter((row) => row.decided >= 3)
     .sort((a, b) => b.wins / b.decided - a.wins / a.decided || b.decided - a.decided)[0];
+  coverage.agents = `${[...agents.values()].filter((row) => row.games >= 3).length}/${agents.size}`;
+  coverage.partners = `${parties.filter((row) => row.decided >= 3).length}/${parties.length}`;
+  coverage.weapons = matches.filter((match) => Object.keys(match.weaponKills || {}).length).length;
   const gun = [...weapons].sort((a, b) => b[1] - a[1])[0];
 
   const label = (value) => escapeMarkdown(String(value).slice(0, 60));
   return [
-    bestAgent ? `**Highest agent win rate:** ${label(bestAgent.name)} · ${bestAgent.wins}/${bestAgent.games} wins` : '**Agent:** Need 3 known results on one agent.',
+    bestAgent ? `**Highest agent win rate:** ${label(bestAgent.name)} · ${bestAgent.wins}/${bestAgent.games} wins` : '**Agent:** —',
     roleReadout(matches),
-    partner ? `**Highest party win rate:** ${label(partner.riotId)} · ${partner.wins}/${partner.decided} party wins` : '**Queue partner:** Need 3 confirmed party results with one player.',
-    gun ? `**Most gun kills:** ${label(gun[0])} · ${gun[1]} kills.` : '**Gun:** Insufficient named gun events.',
+    partner ? `**Highest party win rate:** ${label(partner.riotId)} · ${partner.wins}/${partner.decided} party wins` : '**Queue partner:** —',
+    gun ? `**Most gun kills:** ${label(gun[0])} · ${gun[1]} kills.` : '**Gun:** —',
   ].join('\n');
 }
 
@@ -98,10 +101,7 @@ function economyReadout(matches) {
     ['Damage / 1k spent', damage ? format(damage.perThousand) : '—',
       damage ? `${damage.matches} games` : '—'],
   ];
-  return statTable(['Measure', 'Value', 'Sample'], [18, 7, 10], rows) +
-    '\nSpent = credits you paid. Gear value includes carried gear.' +
-    '\nSpend / round won = your spend ÷ team rounds won.' +
-    '\nDamage / 1k spent = your damage per 1,000 credits.';
+  return statTable(['Measure', 'Value', 'Sample'], [18, 7, 10], rows);
 }
 
 // Conservative monospace widths for wide characters and combining marks.
@@ -276,7 +276,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   const momentum = updates.length ? ` Rank Rating moved **${formatRRChange(net)}** over ${updates.length} recorded updates.` : '';
 
   const coach = reviewLatestMatch(recentMatches);
-  const coachHint = coach ? '\nStart with **Coach · Latest Match** for one replay question.' : '';
+  const coachHint = coach ? '\nRank, momentum and the full report follow.' : '';
   const embed = new EmbedBuilder()
     .setColor(VALORANT_RED)
     .setAuthor({ name: playerData.mockData ? '◆ VALORANT / EXAMPLE REPORT' : '◆ VALORANT / RANKED REPORT + COACH' })
@@ -289,6 +289,38 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   if (cardImage) {
     embed.setThumbnail(cardImage);
   }
+
+  const changesRR = updates.map((entry) => entry.rrChange ?? entry.rr_change);
+  const directionRR = changesRR.every((value) => value > 0) ? 'all RR gains'
+    : changesRR.every((value) => value < 0) ? 'all RR losses'
+      : changesRR.every((value) => value === 0) ? 'all zero changes' : 'mixed changes';
+  const momentumReadout = updates.length
+    ? `**Momentum:** ${formatRRChange(net)} RR over ${updates.length} updates, ${directionRR}. Oldest first.\n\`\`\`\n${rrBars(updates)}\n\`\`\`` : '';
+
+  if (coach) {
+    const { match, score, opened, conceded, personalFirstKills, personalCoverage, openingBaseline, practice } = coach;
+    const result = match.isWin ? 'Won' : 'Lost';
+    const map = escapeMarkdown(String(match.map || 'unknown map').slice(0, 60));
+    const roleLabel = match.role && match.agent ? ` · ${escapeMarkdown(match.agent)} (${match.role})` : '';
+    const readout = [`**${result}${score ? ` ${score}` : ''} on ${map}.**${roleLabel}`];
+    if (opened.total) readout.push(`Your team won ${opened.won}/${opened.total} rounds after getting the first kill.`);
+    if (conceded.total) readout.push(`It won ${conceded.won}/${conceded.total} after the opponent got it.`);
+    if (personalCoverage) {
+      const share = 100 * personalFirstKills / personalCoverage;
+      readout.push(`**Your first kills:** ${personalFirstKills}/${personalCoverage} known openings (${Math.round(share)}%).`);
+      if (openingBaseline) {
+        const { firstKills, rounds, games } = openingBaseline;
+        const earlier = 100 * firstKills / rounds;
+        const change = formatRRChange(Math.round(share - earlier));
+        readout.push(`**Earlier as ${match.role}:** ${firstKills}/${rounds} (${Math.round(earlier)}%) across ${games} matches this act.`);
+        readout.push(`**Change:** ${change} percentage points.`);
+      }
+    }
+    readout.push(`**Replay cue:** ${practice}`);
+    if (momentumReadout) readout.push(momentumReadout);
+    addFields({ name: '🎯 Coach · Latest Match', value: readout.join('\n') });
+  }
+  if (!coach && momentumReadout) addFields({ name: '↕ Rank Momentum', value: momentumReadout });
 
   if (matchesAnalyzed > 0) {
     const recentValue = [
@@ -317,28 +349,6 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     inline: true,
   });
 
-  if (coach) {
-    const { match, score, opened, conceded, personalFirstKills, personalCoverage, openingBaseline, practice } = coach;
-    const result = match.isWin ? 'Won' : 'Lost';
-    const map = escapeMarkdown(String(match.map || 'unknown map').slice(0, 60));
-    const roleLabel = match.role && match.agent ? ` · ${escapeMarkdown(match.agent)} (${match.role})` : '';
-    const readout = [`**${result}${score ? ` ${score}` : ''} on ${map}.**${roleLabel}`];
-    if (opened.total) readout.push(`Your team won ${opened.won}/${opened.total} rounds after getting the first kill.`);
-    if (conceded.total) readout.push(`It won ${conceded.won}/${conceded.total} after the opponent got it.`);
-    if (personalCoverage) {
-      const share = 100 * personalFirstKills / personalCoverage;
-      readout.push(`**Your first kills:** ${personalFirstKills}/${personalCoverage} known openings (${Math.round(share)}%).`);
-      if (openingBaseline) {
-        const { firstKills, rounds, games } = openingBaseline;
-        const earlier = 100 * firstKills / rounds;
-        const change = formatRRChange(Math.round(share - earlier));
-        readout.push(`**Earlier as ${match.role}:** ${firstKills}/${rounds} (${Math.round(earlier)}%) across ${games} matches this act.`);
-        readout.push(`**Change:** ${change} percentage points.`);
-      }
-    }
-    readout.push(`**Replay cue:** ${practice}`);
-    addFields({ name: '🎯 Coach · Latest Match', value: readout.join('\n') });
-  }
   const session = latestSession(recentMatches, mmrHistory);
   if (session) {
     const record = session.known ? `Won ${session.wins} of ${session.known} matches with a known result.` : 'Results unavailable.';
@@ -378,9 +388,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     !career?.accolades?.length ? 'Accolades' : null,
   ].filter(Boolean);
   if (missingCareer.length) {
-    addFields({ name: 'Career Data Availability', value: career
-      ? `No displayable data from HenrikDev for: ${missingCareer.join(', ')}.`
-      : `${missingCareer.join(' and ')} require experimental career data.`, inline: false });
+    addFields({ name: 'Career Data Availability', value: missingCareer.map((item) => `${item}: —`).join('\n') });
   }
   const maps = Array.isArray(playerData.mapSummary) ? playerData.mapSummary : [];
   if (maps.length) {
@@ -402,9 +410,10 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
 
   }
 
+  const coverage = { agents: '0/0', partners: '0/0', weapons: 0 };
   if (recentMatches.length) {
     addFields({ name: 'Recent Sample Leaders & Economy',
-      value: sampleReadout(recentMatches, playerData.partySummary || []) + '\n\n' + economyReadout(recentMatches) });
+      value: sampleReadout(recentMatches, playerData.partySummary || [], coverage) + '\n\n' + economyReadout(recentMatches) });
   }
 
   const roundGroups = new Map([
@@ -493,19 +502,9 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   if (recentMatches.length) {
     const [results, stats] = matchTable(recentMatches, rrByMatch);
     addFields(
-      { name: '▤ Recent Competitive · Newest First', value: results },
-      { name: 'Recent Competitive · Match Stats', value: stats + '\nACS = Average Combat Score · Perf = Performance Score · — = unavailable' },
+      { name: '▤ Match Log · 1 of 2', value: results },
+      { name: '▤ Match Log · 2 of 2', value: stats + '\nMatch numbers link both panels, newest first.' },
     );
-  }
-
-  const rrHistory = buildRRHistory(mmrHistory);
-  if (rrHistory.length) {
-    const net = rrHistory.reduce((sum, entry) => sum + (entry.rrChange ?? entry.rr_change), 0);
-    addFields({
-      name: '↕ Observed RR Changes',
-      inline: false,
-      value: `Last ${rrHistory.length} updates · oldest first · net ${formatRRChange(net)} RR\n\`\`\`\n${rrBars(rrHistory)}\n\`\`\``,
-    });
   }
 
   const rrByResult = summarizeObservedRR(recentMatches, mmrHistory);
@@ -585,8 +584,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     });
     addFields({ name: '👥 Who You Queued With',
       value: groupedStatTable(['Wins / games', 'Win %', 'Rounds/game'], [13, 6, 11], values, memberNotes) +
-        '\nRounds/game = average rounds won minus lost.' +
-        '\nT = trades after your death. K/D = kills/deaths. G = games with data.' +
+
         (rows.length > shown.length ? ` Showing ${shown.length} of ${rows.length} groups.` : '') });
   }
 
@@ -627,6 +625,28 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
       inline: false,
     });
   }
+
+  const economyMatches = recentMatches.filter((match) => match.roundsPlayed > 0 &&
+    [match.creditsPerRound, match.loadoutPerRound, match.creditsSpentTotal].some(Number.isFinite)).length;
+  const careerCount = Number(Boolean(career?.mastery?.length)) + Number(Boolean(career?.accolades?.length));
+  addFields({ name: `◆ Sample Coverage · ${recentMatches.length} matches`,
+    value: statTable(['Measure', 'Requirement', 'Seen'], [13, 20, 7], [
+      ['Agent leader', '3 results per agent', coverage.agents],
+      ['Role leader', '3 results in 2 roles', summarizeRoles(recentMatches, roleOf).roles.filter((row) => row.games >= 3).length],
+      ['Queue partner', '3 party results', coverage.partners],
+      ['Weapon kills', '1 logged gun match', coverage.weapons],
+      ['Economy', '1 match with costs', economyMatches],
+      ['Career', 'Beta career data', playerData.experimentalEnabled === false ? 'Off' : `${careerCount}/2`],
+    ]) + '\n— means unavailable or below the sample requirement. Agent and partner counts show how many qualified out of how many appeared.' });
+  addFields({ name: 'Report Legend', value: [
+    '**ACS** Average Combat Score',
+    '**Damage / 1k spent** Your damage per 1,000 credits',
+    '**G** Games with data · **Gear value** Includes carried gear',
+    '**K/D/A** Kills, deaths, assists · **Perf** Performance Score',
+    '**Rounds/game** Average rounds won minus lost · **RR** Rank Rating',
+    '**Spend / round won** Your spend divided by team rounds won',
+    '**Spent** Credits paid · **T** Trades after your death · **W** Wins',
+  ].join('\n') });
 
   let footerText = 'HenrikDev rank and match data';
   if (!profileData && mmrData && !recentMatches.length) {

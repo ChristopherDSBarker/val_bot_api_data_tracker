@@ -11,6 +11,28 @@ No recent Competitive results available.
 Competitive combat data unavailable.
 
 [Career Data Availability]
-Agent Mastery and Accolades require experimental career data.
+Agent Mastery: —
+Accolades: —
+
+[◆ Sample Coverage · 0 matches]
+```
+Measure       Requirement          Seen
+Agent leader  3 results per agent  0/0
+Role leader   3 results in 2 roles 0
+Queue partner 3 party results      0/0
+Weapon kills  1 logged gun match   0
+Economy       1 match with costs   0
+Career        Beta career data     0/2
+```
+— means unavailable or below the sample requirement. Agent and partner counts show how many qualified out of how many appeared.
+
+[Report Legend]
+**ACS** Average Combat Score
+**Damage / 1k spent** Your damage per 1,000 credits
+**G** Games with data · **Gear value** Includes carried gear
+**K/D/A** Kills, deaths, assists · **Perf** Performance Score
+**Rounds/game** Average rounds won minus lost · **RR** Rank Rating
+**Spend / round won** Your spend divided by team rounds won
+**Spent** Credits paid · **T** Trades after your death · **W** Wins
 
 HenrikDev rank data · Match data unavailable · Up to 10 Competitive matches

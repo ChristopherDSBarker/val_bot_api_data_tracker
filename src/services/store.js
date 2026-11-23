@@ -84,7 +84,13 @@ function createMatchStore(file) {
     return operation;
   }
 
-  return { recordAndRead };
+  async function countGuildMatches(guild) {
+    await pending;
+    await load();
+    return new Set([...rows.values()].filter((row) => row.guild === guild).map((row) => row.matchId)).size;
+  }
+
+  return { recordAndRead, countGuildMatches };
 }
 
 function historicalPartySplits(rows, guild, actId, partners) {

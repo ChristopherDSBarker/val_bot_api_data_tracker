@@ -38,7 +38,7 @@ Run `npm test` including the consumer fixtures and text snapshots. To accept an 
 ## Before tagging a release
 
 1. Run `npm ci` and `npm test` in a clean checkout on Node.js 22.
-2. In a test server, restart the bot and verify the only command accepts name, tag and region. Run a mock lookup and a live lookup.
+2. In a test server, restart the bot and verify the ranked report accepts name, tag and region. The separate /status command takes no inputs. Run a mock lookup and a live lookup.
 3. On desktop and mobile, check the report header, comparison and party sections. For a multi-page report, confirm Previous and Next update the same message before and after a restart.
 4. Record the result and any exceptions here before freezing the report. Keep separate checks for coaching changes. Passing a snapshot does not verify actual Discord rendering or player adoption.
 
@@ -66,3 +66,5 @@ Players should see what happened, the counts behind a comparison, and a replay q
 | Coaching prompt | A role-based replay question or a check after the first kill | Phrase it as something to examine. The card cannot infer the player’s intent, team assignment, or why a round was lost. |
 
 The round-equivalent change in the comparison measures the difference from applying the earlier win rate to the latest round count. Treat it internally as a descriptive reference calculation, never as rounds caused or prevented by one player.
+
+The latest-match coach is the first report field when available and contains the RR momentum chart. The Match Log uses two numbered panels. Sample Coverage and Report Legend explain missing values and the units used by the tables.

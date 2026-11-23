@@ -4,6 +4,7 @@ const axios = require('axios');
 const responses = new Map();
 const pending = new Map();
 let blockedUntil = 0;
+let lastStatus = null;
 
 async function get(url, options = {}) {
   const key = JSON.stringify([options.headers?.Authorization, url]);
@@ -16,6 +17,7 @@ async function get(url, options = {}) {
     throw error;
   }
   const request = axios.get(url, options).then((response) => {
+    lastStatus = response.status ?? 200;
     // Cache successful data envelopes only. Never cache an API error as data.
     if (response.data?.data !== undefined && !response.data?.errors) {
       if (responses.size >= 250) responses.delete(responses.keys().next().value);
@@ -23,6 +25,7 @@ async function get(url, options = {}) {
     }
     return response;
   }).catch((error) => {
+    lastStatus = error.response?.status ?? 'Network error';
     if (error.response?.status === 429) {
       const retry = error.response.headers?.['retry-after'];
       const seconds = Number(retry);
@@ -35,4 +38,8 @@ async function get(url, options = {}) {
   return request;
 }
 
-module.exports = { get };
+function status() {
+  return { lastStatus, cached: [...responses.values()].filter((row) => row.expires > Date.now()).length };
+}
+
+module.exports = { get, status };

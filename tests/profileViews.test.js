@@ -15,8 +15,8 @@ test('one card shows RR, match log, and teammate identities with missing-name fa
   assert.equal(team.inline, true);
   assert.match(team.value, /Sage.*Duo#NA1.*10\/11\/12/);
   assert.match(team.value, /Omen.*Name unavailable/);
-  assert.ok(fields.some((field) => field.name.includes('Observed RR Changes')));
-  assert.match(fields.find((field) => field.name.includes('Recent Competitive')).value, /12-14.*Haven/);
+  assert.ok(fields.some((field) => field.value.includes('**Momentum:**')));
+  assert.match(fields.find((field) => field.name.includes('Match Log · 1 of 2')).value, /12-14.*Haven/);
 });
 
 test('mastery includes all agents tied at the cutoff', () => {

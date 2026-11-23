@@ -5,9 +5,9 @@ const path = require('node:path');
 const api = require('../src/services/valorantApi');
 const profile = require('../src/commands/valorantProfile');
 
-test('one command shows automatic coaching with only name, tag, and region', async (t) => {
+test('the ranked report shows automatic coaching with only name, tag, and region', async (t) => {
   assert.deepEqual(fs.readdirSync(path.join(__dirname, '../src/commands')).filter((name) => name.endsWith('.js')),
-    ['valorantProfile.js']);
+    ['status.js', 'valorantProfile.js']);
   const config = profile.data.toJSON();
   assert.deepEqual(config.options.map(({ name }) => name), ['name', 'tag', 'region']);
   assert.ok(config.options.find((option) => option.name === 'region').choices
@@ -27,8 +27,9 @@ test('one command shows automatic coaching with only name, tag, and region', asy
     editReply: async (value) => { message = value; },
   });
   const fields = message.embeds[0].fields;
-  assert.ok(fields.some((field) => field.name.includes('Latest Match') && field.value.includes('Replay cue')));
-  assert.ok(fields.some((field) => field.name.includes('Recent Competitive')));
+  assert.match(fields[0].name, /Coach · Latest Match/);
+  assert.match(fields[0].value, /Replay cue/);
+  assert.ok(fields.some((field) => field.name.includes('Match Log · 1 of 2')));
   assert.ok(fields.some((field) => field.value.includes('Duelist 0/1')));
   assert.equal(message.files, undefined);
 
@@ -109,7 +110,7 @@ test('mock mode answers without an API key or a network call', async (t) => {
   });
   assert.equal(network.mock.callCount(), 0);
   assert.match(reply.embeds[0].author.name, /EXAMPLE REPORT/);
-  assert.ok(reply.embeds[0].fields.some(({ name }) => name.includes('Recent Competitive')));
+  assert.ok(reply.embeds[0].fields.some(({ name }) => name.includes('Match Log · 1 of 2')));
 });
 
 test('complete API failure yields one plain-language error reply', async (t) => {
@@ -124,4 +125,24 @@ test('complete API failure yields one plain-language error reply', async (t) => 
   });
   assert.equal(replies.length, 1);
   assert.equal(replies[0].embeds[0].toJSON().title, 'Profile Unavailable');
+});
+
+test('status is a private zero-option health check and scopes match count to the server', async (t) => {
+  const { MessageFlags } = require('discord.js');
+  const status = require('../src/commands/status');
+  const { matchStore } = require('../src/services/store');
+  assert.equal(status.data.toJSON().options.length, 0);
+  t.mock.method(matchStore, 'countGuildMatches', async (guild) => {
+    assert.equal(guild, 'test-guild');
+    return 12;
+  });
+  t.mock.method(require('../src/services/henrikClient'), 'status', () => ({ cached: 5, lastStatus: 429 }));
+  let text;
+  await status.execute({ guildId: 'test-guild',
+    deferReply: async ({ flags }) => assert.equal(flags, MessageFlags.Ephemeral),
+    editReply: async (content) => { text = content; },
+  });
+  assert.match(text, /Cached API responses: 5/);
+  assert.match(text, /Saved matches in this server: 12/);
+  assert.match(text, /Last HenrikDev request: 429/);
 });

@@ -57,6 +57,10 @@ It won 4/6 after the opponent got it.
 3 matches in the recent session. Won 3 of 3 matches with a known result.
 Observed RR: +60 across 3/3 matches.
 
+[Career Rank]
+**Current rank:** Gold 3 · 41 RR
+**Career peak:** Unavailable
+
 [Career Data Availability]
 Agent Mastery: —
 Accolades: —
@@ -140,8 +144,9 @@ Duo · you + 1
   ＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡ
   ＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡ   #NA
   1
-  T — · K/D —
+    Trades — · K/D —
 ```
+A trade means a teammate killed your killer within 5 seconds. K/D shows kills and deaths. G is games with data.
 
 [Account & Rank Details]
 **Peak Season:** Episode 7, Act 3
@@ -154,7 +159,6 @@ Role leader   3 results in 2 roles 1
 Queue partner 3 party results      0/0
 Weapon kills  1 logged gun match   0
 Economy       1 match with costs   0
-Career        Beta career data     0/2
 ```
 — means unavailable or below the sample requirement. Agent and partner counts show how many qualified out of how many appeared.
 

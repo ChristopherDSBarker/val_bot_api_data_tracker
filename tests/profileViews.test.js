@@ -12,7 +12,7 @@ test('one card shows RR, match log, and teammate identities with missing-name fa
   const { fields } = createProfileEmbed({ riotId: 'Player#NA1' },
     { recentMatches: [match], mmrHistory: [{ rrChange: -22 }] }).toJSON();
   const team = fields.find((field) => field.name.endsWith('Teammates'));
-  assert.equal(team.inline, true);
+  assert.equal(team.inline, false);
   assert.match(team.value, /Sage.*Duo#NA1.*10\/11\/12/);
   assert.match(team.value, /Omen.*Name unavailable/);
   assert.ok(fields.some((field) => field.value.includes('**Momentum:**')));

@@ -46,7 +46,7 @@ Run `npm test` including the consumer fixtures and text snapshots. To accept an 
 
 | Player question | Use now | Evidence still needed |
 | --- | --- | --- |
-| Who do I play with most effectively? | Results by confirmed party lineup. Individual trades and kills/deaths are scoped to that lineup. One-game lineups show names without individual aggregates. | Larger comparable samples by act, role, map, and lineup. Team and opponent differences can explain apparent synergy. |
+| Who do I play with most effectively? | Results by confirmed party lineup. Individual trades and kills/deaths are scoped to that lineup. One-game lineups show individual counts with their one-game sample. | Larger comparable samples by act, role, map, and lineup. Team and opponent differences can explain apparent synergy. |
 | What should I review on this role? | One role-specific replay question backed by round counts and same-role comparisons. | Repeated observations across games before prescribing a change. |
 | Which buy or weapon should I choose? | Observed purchases, gear value, and recorded weapon kills. | Match the actual team and opponent loadout by round, then compare wins in similar buy situations. Gun kills need exposure data to measure efficiency. |
 | How strong was the lobby? | Reported visible ranks and linked RR. | Riot's hidden MMR and exact ranking calculation are unavailable. Visible-rank comparisons are descriptive. |

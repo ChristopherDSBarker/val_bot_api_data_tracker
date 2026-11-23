@@ -50,6 +50,10 @@ It won 4/6 after the opponent got it.
 [📋 Latest Session · Recent Sample]
 3 matches in the recent session. Won 3 of 3 matches with a known result.
 
+[Career Rank]
+**Current rank:** Rank unavailable
+**Career peak:** Unavailable
+
 [Career Data Availability]
 Agent Mastery: —
 Accolades: —
@@ -119,6 +123,7 @@ Wins / games  Win %  Rounds/game
 Solo · you
 3W / 3G       100%   —
 ```
+A trade means a teammate killed your killer within 5 seconds. K/D shows kills and deaths. G is games with data.
 
 [Account & Rank Details]
 **Peak Season:** Episode 7, Act 3
@@ -131,7 +136,6 @@ Role leader   3 results in 2 roles 1
 Queue partner 3 party results      0/0
 Weapon kills  1 logged gun match   0
 Economy       1 match with costs   0
-Career        Beta career data     0/2
 ```
 — means unavailable or below the sample requirement. Agent and partner counts show how many qualified out of how many appeared.
 

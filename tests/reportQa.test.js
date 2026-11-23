@@ -34,7 +34,7 @@ const scenarios = {
   'ranked-ten-solo': () => card(block(10)),
   'ranked-ten-trio': () => card(block(10, { teammates: trio })),
   'five-stack-members': () => card([
-    ...block(3, { teammates: [
+    ...block(1, { teammates: [
       ...trio.map((member, i) => ({ ...member, trades: i + 1, kills: 18, deaths: 12 })),
       { puuid: 'c', name: 'Doii112', tag: 'NA1', sameParty: true, trades: 0, kills: 9, deaths: 14 },
       { puuid: 'd', name: 'Ａ'.repeat(20), tag: 'UwU', sameParty: true, trades: 1, kills: 6, deaths: 9 },
@@ -88,6 +88,15 @@ for (const [name, scenario] of Object.entries(scenarios)) {
           }
         }
       }
+    }
+    if (name === 'five-stack-members') {
+      const party = pages.slice(1).flatMap((page) => page.embeds[0].fields)
+        .find(({ name }) => name.includes('Who You Queued With'));
+      assert.ok(party);
+      assert.match(party.value, /^  Doii112#NA1\n    Trades 0 \(1G\) · K\/D 9\/14 \(1G\)$/m);
+      assert.equal((party.value.match(/^    Trades .* · K\/D /gm) || []).length, 4);
+      assert.match(party.value, /1W \/ 1G/);
+      assert.doesNotMatch(party.value, /\+1 more/);
     }
     const rendered = pages.map(({ embeds: [page] }, i) => [
       `=== Page ${i + 1} ===`, page.title, page.description,

@@ -28,6 +28,10 @@ Ranked Report · Details
 [Combat]
 Competitive combat data unavailable.
 
+[Career Rank]
+**Current rank:** Gold 3 · 41 RR
+**Career peak:** Unavailable
+
 [Career Data Availability]
 Agent Mastery: —
 Accolades: —
@@ -43,7 +47,6 @@ Role leader   3 results in 2 roles 0
 Queue partner 3 party results      0/0
 Weapon kills  1 logged gun match   0
 Economy       1 match with costs   0
-Career        Beta career data     0/2
 ```
 — means unavailable or below the sample requirement. Agent and partner counts show how many qualified out of how many appeared.
 

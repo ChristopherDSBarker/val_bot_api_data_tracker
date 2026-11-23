@@ -271,7 +271,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   }
 
   if (peakRank !== 'N/A' && peakRank !== null) {
-    descriptionParts.push(`Peak: ${peakRank}`);
+    descriptionParts.push(`Career peak: ${peakRank}`);
   }
 
   const observed = recentMatches.filter((match) => typeof match.isWin === 'boolean');
@@ -372,6 +372,12 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   const safeLabel = (value) => String(value).replace(/[*`~|<>@]/g, '').slice(0, 70);
   const prestige = playerData.lifetimePrestige && typeof playerData.lifetimePrestige === 'object'
     ? Object.entries(playerData.lifetimePrestige).filter(([, value]) => Number.isFinite(value?.count)) : [];
+  const current = currentRank || 'Unavailable';
+  const rankLines = [
+    `**Current rank:** ${current}${currentRR !== null ? ` · ${currentRR} RR` : ''}`,
+    `**Career peak:** ${peakRank && peakRank !== 'N/A' ? peakRank : 'Unavailable'}`,
+  ];
+  addFields({ name: 'Career Rank', value: rankLines.join('\n') });
   const careerSections = [
     ['🏅 Rank Legacy', ['Rank', 'Times'], [23, 8], prestige.map(([rank, value]) => [rank, `×${value.count}`])],
     ['◆ Agent Mastery', ['Agent', 'Level'], [23, 8], (career?.mastery || []).map(({ agent, level }) => [agent, `Lv. ${level}`])],
@@ -545,7 +551,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   if (squad?.length) {
     addFields({
       name: 'Latest Shown Match · Teammates',
-      inline: true,
+      inline: false,
       value: squad.map(({ agent, name, tag, kills, deaths, assists }) => {
         const riotId = name ? (tag ? `${name}#${tag}` : name) : 'Name unavailable';
         return `**${escapeMarkdown(String(agent || 'Unknown agent').slice(0, 40))}** · ${escapeMarkdown(riotId.slice(0, 60))} · ${formatters.formatKDA(kills, deaths, assists)}`;
@@ -574,24 +580,23 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     const memberNotes = shown.map((row) => {
       const members = [...(row.perMember?.values() || [])]
         .sort((a, b) => b.trades - a.trades || b.games - a.games || a.name.localeCompare(b.name));
-      const notes = members.slice(0, 3).flatMap((member) => {
-        if (row.games < 2) return wrapTableText(String(member.name).replace(/[`\r\n]/g, ' '), 38).map((line) => `  ${line}`);
-        const trades = member.tradeGames ? `${member.trades}T/${member.tradeGames}G` : 'T —';
-        const kd = member.kdGames ? `${member.kills}/${member.deaths}${member.kdGames < member.games ? `/${member.kdGames}G` : ''}` : '—';
-        const stats = `${trades} · K/D ${kd}`;
+      const notes = members.flatMap((member) => {
+        const trades = member.tradeGames ? `${member.trades} (${member.tradeGames}G)` : '—';
+        const kd = member.kdGames ? `${member.kills}/${member.deaths} (${member.kdGames}G)` : '—';
         const name = String(member.name).replace(/[`\r\n]/g, ' ');
-        return tableWidth(name) + tableWidth(stats) <= 35 ? [`  ${name} · ${stats}`]
-          : [...wrapTableText(name, 38).map((line) => `  ${line}`), `  ${stats}`];
+        return [
+          ...wrapTableText(name, 38).map((line) => `  ${line}`),
+          ...wrapTableText(`Trades ${trades} · K/D ${kd}`, 36).map((line) => `    ${line}`),
+        ];
       });
-      if (members.length > 3) notes.push(`  +${members.length - 3} more`);
-      if (!row.perMember && row.games >= 2 && row.tradeGames) {
-        notes.push(`  ${row.trades}T in ${row.tradeGames} logged games`);
+      if (!row.perMember && row.tradeGames) {
+        notes.push(`  Trades ${row.trades} (${row.tradeGames}G)`);
       }
       return notes;
     });
     addFields({ name: '👥 Who You Queued With',
       value: groupedStatTable(['Wins / games', 'Win %', 'Rounds/game'], [13, 6, 11], values, memberNotes) +
-
+        '\nA trade means a teammate killed your killer within 5 seconds. K/D shows kills and deaths. G is games with data.' +
         (rows.length > shown.length ? ` Showing ${shown.length} of ${rows.length} groups.` : '') });
   }
 
@@ -635,7 +640,6 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
 
   const economyMatches = recentMatches.filter((match) => match.roundsPlayed > 0 &&
     [match.creditsPerRound, match.loadoutPerRound, match.creditsSpentTotal].some(Number.isFinite)).length;
-  const careerCount = Number(Boolean(career?.mastery?.length)) + Number(Boolean(career?.accolades?.length));
   addFields({ name: `◆ Sample Coverage · ${recentMatches.length} matches`,
     value: statTable(['Measure', 'Requirement', 'Seen'], [13, 20, 7], [
       ['Agent leader', '3 results per agent', coverage.agents],
@@ -643,7 +647,6 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
       ['Queue partner', '3 party results', coverage.partners],
       ['Weapon kills', '1 logged gun match', coverage.weapons],
       ['Economy', '1 match with costs', economyMatches],
-      ['Career', 'Beta career data', playerData.experimentalEnabled === false ? 'Off' : `${careerCount}/2`],
     ]) + '\n— means unavailable or below the sample requirement. Agent and partner counts show how many qualified out of how many appeared.' });
   addFields({ name: 'Report Legend', value: [
     '**ACS** Average Combat Score',

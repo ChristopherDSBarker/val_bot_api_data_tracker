@@ -28,4 +28,31 @@ function summarizeSpendingEfficiency(matches) {
   return { roundWins: rate(roundWins), damage: rate(damage) };
 }
 
-module.exports = { summarizeSpendingEfficiency };
+function summarizeObservedRR(matches, history) {
+  const updates = new Map(history.filter((entry) => entry?.matchId && Number.isFinite(entry.rrChange))
+    .map((entry) => [entry.matchId, entry]));
+  const recent = matches.find((match) => match.completed !== false && match.seasonId);
+  const groups = { wins: [], losses: [] };
+  const seen = new Set();
+  let count = 0;
+  for (const match of matches) {
+    if (!recent || match.seasonId !== recent.seasonId ||
+        (recent.gameVersion && match.gameVersion !== recent.gameVersion) ||
+        match.completed === false || typeof match.isWin !== 'boolean' ||
+        !match.matchId || seen.has(match.matchId)) continue;
+    seen.add(match.matchId);
+    const update = updates.get(match.matchId);
+    if (!update || update.placement || (update.queue && update.queue !== 'competitive')) continue;
+    groups[match.isWin ? 'wins' : 'losses'].push(update.rrChange);
+    count++;
+  }
+  const describe = (values) => values.length ? {
+    games: values.length,
+    average: values.reduce((sum, value) => sum + value, 0) / values.length,
+    min: Math.min(...values), max: Math.max(...values),
+  } : null;
+  return { wins: describe(groups.wins), losses: describe(groups.losses), count,
+    sameVersion: Boolean(recent?.gameVersion) };
+}
+
+module.exports = { summarizeSpendingEfficiency, summarizeObservedRR };

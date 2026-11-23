@@ -15,8 +15,9 @@ function compareRoundWindows(matches, { byRole = false } = {}) {
       for (const round of match.roundResults || []) {
         if (!['attack', 'defense'].includes(round.side) || typeof round.won !== 'boolean') continue;
         const key = JSON.stringify([...context, round.side]);
-        const group = groups.get(key) || { map: match.map, agent: match.agent, role: match.role, side: round.side, won: 0, total: 0, firstKills: 0, knownOpeners: 0 };
+        const group = groups.get(key) || { map: match.map, agent: match.agent, role: match.role, side: round.side, won: 0, total: 0, firstKills: 0, knownOpeners: 0, matchIds: new Set() };
         group.total++;
+        group.matchIds.add(match.matchId);
         if (round.won) group.won++;
         if (typeof round.playerGotFirstKill === 'boolean') {
           group.knownOpeners++;

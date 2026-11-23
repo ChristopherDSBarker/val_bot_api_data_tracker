@@ -1,3 +1,4 @@
+const { averageEnemyRank } = require('./visibleRanks');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
@@ -53,7 +54,12 @@ function createMatchStore(file) {
           match.completed === false || typeof match.isWin !== 'boolean') continue;
         const row = {
           guild, player, matchId: match.matchId, actId: match.seasonId, startedAt: match.startedAt,
+          gameVersion: match.gameVersion ?? null,
           won: match.isWin, map: match.map, agent: match.agent, role: match.role ?? null, tier: match.tier,
+          rrChange: Number.isFinite(match.rrChange) ? match.rrChange : null,
+          enemyTiers: match.enemyTiers ?? null,
+          teamTiers: match.teamTiers ?? null,
+          enemyAvgTier: averageEnemyRank(match.enemyTiers),
           acs: match.acsPerRound, adr: match.adrPerRound, roundsPlayed: match.roundsPlayed,
           kills: match.kills, deaths: match.deaths, assists: match.assists,
           damageDealt: match.damageDealt, credits: match.creditsSpentTotal,

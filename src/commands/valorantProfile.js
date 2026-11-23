@@ -1,3 +1,4 @@
+const { summarizeVisibleRankResults } = require('../services/visibleRanks');
 const { matchStore, historicalPartySplits } = require('../services/store');
 /**
  * /valorant-profile command - Display Valorant player profile stats
@@ -114,10 +115,10 @@ module.exports = {
       }
 
       // If both are missing, return error
-      if (!account && !playerProfile && !playerMMR) {
+      if (!account && !playerProfile && !playerMMR && !recentMatches.length && !mmrHistory.length) {
         const errorEmbed = embeds.createErrorEmbed(
-          'Player Not Found',
-          `Could not find player **${name}#${tag}** in region **${region}**.\n\nMake sure the name and tag are correct.`
+          'Profile Unavailable',
+          `Could not find player **${name}#${tag}** in region **${region}**.\n\nCheck the Riot ID and region. If they are correct, try again in a moment.`
         );
         await interaction.editReply({ embeds: [errorEmbed] });
         return;
@@ -125,14 +126,20 @@ module.exports = {
 
       const partySummary = summarizeTeammates(recentMatches, null, { partyOnly: true });
       let savedPartyResults = [];
+      let visibleRankResults = null;
       const puuid = account?.puuid || experimentalEnhancements?.account?.puuid;
       // Store only the current v4 sample, never mock entries or the stored-history fallback.
       if (process.env.ENABLE_MATCH_HISTORY !== 'false' && process.env.USE_MOCK_DATA !== 'true' &&
           interaction.guildId && puuid) {
         try {
-          const history = await matchStore.recordAndRead(interaction.guildId, puuid, recentMatches.filter((match) => !match.dataSource));
+          const rrByMatch = new Map(mmrHistory.filter((entry) => entry?.matchId && Number.isFinite(entry.rrChange))
+            .map((entry) => [entry.matchId, entry.rrChange]));
+          const liveMatches = recentMatches.filter((match) => !match.dataSource).map((match) =>
+            rrByMatch.has(match.matchId) ? { ...match, rrChange: rrByMatch.get(match.matchId) } : match);
+          const history = await matchStore.recordAndRead(interaction.guildId, puuid, liveMatches);
           const latest = [...history].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))[0];
           savedPartyResults = historicalPartySplits(history, interaction.guildId, latest?.actId, partySummary);
+          visibleRankResults = summarizeVisibleRankResults(history, latest?.actId);
         } catch (error) {
           console.warn('[HISTORY] Saved comparisons unavailable:', error.code || error.name);
         }
@@ -149,6 +156,8 @@ module.exports = {
         teammateSummary: summarizeTeammates(recentMatches),
         partySummary,
         savedPartyResults,
+        mockData: process.env.USE_MOCK_DATA === 'true',
+        visibleRankResults,
         // Ensure we preserve profile-specific fields even if MMR is missing
         riotId: playerProfile?.riotId || `${account?.name || name}#${account?.tag || tag}`,
         name: playerMMR?.name || account?.name || name,

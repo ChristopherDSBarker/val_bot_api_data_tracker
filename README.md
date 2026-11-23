@@ -4,7 +4,7 @@ Run `/valorant-profile` to see how your recent ranked games went, who you queued
 
 ## Run the bot
 
-Use Node.js 22, a Discord bot invited to your server with slash command support, and your own HenrikDev API key for live stats. Clone the repository and run the commands below from its directory.
+Use Node.js 22, a Discord bot invited to your server with slash command support and permission to send messages and embed links, and your own HenrikDev API key for live stats. Clone the repository and run the commands below from its directory.
 
 ```bash
 git clone https://github.com/ChristopherDSBarker/val_bot_api_data_tracker.git
@@ -37,14 +37,14 @@ Use the region where the player competes. Region defaults to `na`. The bot regis
 | **Recent Competitive** | Up to ten completed matches with result, score, map, agent, kills/deaths/assists, Average Combat Score (ACS), Performance Score, and match-linked RR when available. |
 | **How Often Did Your Team Win the Round?** | Wins and known rounds on attack, on defense, and after either team got the first kill. A round can appear in both a side row and a first-kill row. |
 | **Competitive Maps** | Matches won, average Performance Score with its match count, and rounds won by side. These are observed map results. Riot's private Map Rating is a separate number. |
-| **How You Played Together** | One row per player. Party rows count confirmed games queued together. Team rows describe same-team results when there is no confirmed party record. A trade means a teammate killed your killer within five seconds in the same round. The trade denominator is games with usable kill records. |
+| **Who You Queued With** | One result per party lineup, with individual kills, deaths, and trades beneath that lineup after two games. Verified repeat non-party teammates appear separately. A trade means a teammate killed your killer within five seconds in the same round. The trade denominator is games with usable kill records. |
 | **Career and Act Accolades** | Lifetime Rank Legacy counts, API mastery levels with cutoff ties, top lifetime accolades, and accolades for the act linked to the latest match when HenrikDev returns that act. |
 | **Sample Leaders and Economy** | Recent agent, role, and party records, named gun kills, credits spent per round, and equipment value per round. Gun kill counts show logged results. The bot does not know time spent using each gun. |
 | **Compare Your Recent Games** | Compares the earlier and later five-match blocks in one act, matching by map, agent, and side. Each row needs ten known rounds per block. If exact matches are sparse, it checks by agent role and side. The table shows the change in percentage points. |
 
 **Reading a result:** `1/5 (20%)` means one win in five known results. A small sample can suggest a replay worth reviewing. It can't tell you that a teammate, agent, or purchase caused the outcome.
 
-The round section also tells you, in plain English, how often your team won after getting or giving up the first kill. The economy table separates your purchases from the value of gear you carried. It shows your credits spent per team round won and your damage per 1,000 credits spent. Each ratio uses only matches with both required inputs and displays its match count. The party comparison shows match wins with and without a confirmed party partner in the recent window. Games with incomplete party records are excluded from the queued-apart count. Weapon choice, saved gear, opponents, and teammates can all affect the observed results.
+The round section also tells you, in plain English, how often your team won after getting or giving up the first kill. The economy table separates your purchases from the value of gear you carried. It shows your credits spent per team round won and your damage per 1,000 credits spent. Each ratio uses only matches with both required inputs and displays its match count. Saved Act comparisons show wins and games queued with and without an individual party partner. Games with incomplete party records are excluded from the queued-without count. Weapon choice, saved gear, opponents, and teammates can all affect the observed results.
 
 The card shows headshots as a share of **recorded hits**. It shows damage delta per round only when damage dealt, damage received, and round counts support the calculation. Dashes and “unavailable” indicate missing data.
 
@@ -56,7 +56,7 @@ The card shows headshots as a share of **recorded hits**. It shows damage delta 
 - For a mock profile, set `USE_MOCK_DATA=true`. Discord credentials are still required for Discord login.
 - Run the local regression suite with `npm test`. The tests run without a Discord login or API key. On GitHub, the clean-install workflow runs `npm ci` and `npm test` on pushes and pull requests.
 
-If a report needs more space, use **Previous** and **Next** to read all pages in the same Discord reply. The requester can switch pages for seven days, including after a restart if the bot keeps its local `data/report-pages/` directory. Older cards created before this update need a fresh lookup. Party comparisons appear inside **How You Played Together**. The experimental pipeline defaults to enabled and can be disabled with the startup command above.
+If a report needs more space, use **Previous** and **Next** to read all pages in the same Discord reply. The requester can switch pages for seven days, including after a restart if the bot keeps its local `data/report-pages/` directory. Older cards created before this update need a fresh lookup. Party comparisons appear inside **Who You Queued With**. The experimental pipeline defaults to enabled and can be disabled with the startup command above.
 
 ## Data coverage
 
@@ -77,3 +77,7 @@ Run the usual `/valorant-profile` using your Riot ID and region. The report auto
 The role readout compares match win rates with your own recent baseline. It names a leading role only when at least two roles each have three known results. A single-map sample is labeled, and role-specific round counts appear when enough round data is available.
 
 The Coach section separates **your first kills per known opening** from **team rounds won after getting the first kill**. When the latest match has at least ten known openers and two earlier matches in the same act and role supply at least ten more, it shows a personal baseline and the change in percentage points.
+
+**Results by Opponents’ Visible Rank** appears when saved history contains at least 40 eligible games in a higher or lower opponent-rank group from the same act. Each match needs all five opponents’ reported ranks and your own reported rank. The bot averages ordered rank divisions to sort the match into a group. This is a comparison of visible ranks, and it does not adjust for your own team’s rank or estimate hidden MMR. Older records can lack both opponent ranks and linked RR.
+
+See the [report contract and release checklist](docs/report-contract.md) for the card’s units, sample gates, and verification steps.

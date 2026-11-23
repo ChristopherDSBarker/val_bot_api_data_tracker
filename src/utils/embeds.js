@@ -1,8 +1,8 @@
 const { roleOf } = require('../services/agentRoles');
 const { summarizeRoles } = require('../services/valorantCareer');
 const { reviewLatestMatch, latestSession } = require('../services/coach');
-const { comparePartyResults } = require('../services/teammateStats');
-const { summarizeSpendingEfficiency } = require('../services/analytics');
+const { summarizeQueueGroups } = require('../services/teammateStats');
+const { summarizeSpendingEfficiency, summarizeObservedRR } = require('../services/analytics');
 const { compareRoundWindows } = require('../services/progress');
 /**
  * Discord embed builders for Valorant stats
@@ -104,20 +104,42 @@ function economyReadout(matches) {
     '\nDamage / 1k spent = your damage per 1,000 credits.';
 }
 
+// Conservative monospace widths for wide characters and combining marks.
+function tableWidth(value) {
+  return Array.from(value).reduce((sum, char) => sum + (/\p{Mark}|\u200d/u.test(char) ? 0
+    : /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\ufe10-\ufe6f\uff01-\uff60\uffe0-\uffe6]|\p{Extended_Pictographic}/u.test(char) ||
+      char.codePointAt(0) >= 0x20000 ? 2 : 1), 0);
+}
+
+function wrapTableText(text, width) {
+  const chunks = [];
+  let line = '';
+  let size = 0;
+  for (const char of text) {
+    const nextSize = tableWidth(char);
+    if (size + nextSize > width && line) {
+      chunks.push(line);
+      line = '';
+      size = 0;
+    }
+    line += char;
+    size += nextSize;
+  }
+  if (line) chunks.push(line);
+  return chunks;
+}
+
 function statTable(headers, widths, rows) {
   const lines = [];
   for (const row of [headers, ...rows]) {
-    const cells = row.map((value, index) => {
-      const characters = Array.from(String(value ?? '—').replace(/[`\r\n]/g, ' '));
-      const chunks = [];
-      for (let i = 0; i < characters.length; i += widths[index]) {
-        chunks.push(characters.slice(i, i + widths[index]).join(''));
-      }
-      return chunks;
-    });
+    const cells = row.map((value, index) =>
+      wrapTableText(String(value ?? '—').replace(/[`\r\n]/g, ' '), widths[index]));
     const height = Math.max(1, ...cells.map((cell) => cell.length));
     const next = Array.from({ length: height }, (_, line) => cells
-      .map((cell, index) => (cell[line] || '').padEnd(widths[index])).join(' ').trimEnd());
+      .map((cell, index) => {
+        const value = cell[line] || '';
+        return value + ' '.repeat(Math.max(0, widths[index] - tableWidth(value)));
+      }).join(' ').trimEnd());
     lines.push(...next);
   }
   return '\`\`\`\n' + lines.join('\n') + '\n\`\`\`';
@@ -128,8 +150,21 @@ function groupedStatTable(headers, widths, rows, notes = []) {
   const clean = (text) => String(text).replace(/[`\r\n]/g, ' ');
   const body = (table) => table.split('\n').slice(1, -1);
   const [header] = body(statTable(headers, widths, []));
+  const wrapLabel = (label) => {
+    const lines = [];
+    let current = '';
+    for (const word of clean(label).split(/\s+/)) {
+      if (current && tableWidth(current) + tableWidth(word) + 1 > 40) {
+        lines.push(current);
+        current = '';
+      }
+      current += current ? ` ${word}` : word;
+    }
+    if (current) lines.push(current);
+    return lines.flatMap((line) => wrapTableText(line, 40));
+  };
   const lines = rows.flatMap(([label, ...values], index) => [
-    clean(label), ...body(statTable(headers, widths, [values])).slice(1),
+    ...wrapLabel(label), ...body(statTable(headers, widths, [values])).slice(1),
     ...(notes[index] || []).map(clean), '',
   ]);
   return '```\n' + [header, '', ...lines].join('\n').trimEnd() + '\n```';
@@ -193,7 +228,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     riotId = 'N/A',
     region = 'N/A',
     level = 'N/A',
-    currentRank = 'Unranked',
+    currentRank = 'Rank unavailable',
     currentRR = null,
     lastRRChange = null,
     peakRank = 'N/A',
@@ -214,7 +249,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     gamesNeededForRating = null,
   } = playerData;
 
-  const descriptionParts = [currentRank || 'Unranked'];
+  const descriptionParts = [currentRank || 'Rank unavailable'];
 
   if (currentRR !== null) {
     descriptionParts.push(`${currentRR} RR`);
@@ -229,19 +264,24 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     descriptionParts.push(`Peak: ${peakRank}`);
   }
 
-  const results = wins + losses;
+  const observed = recentMatches.filter((match) => typeof match.isWin === 'boolean');
+  const useMatchResults = wins + losses === 0 && observed.length > 0;
+  const resultWins = useMatchResults ? observed.filter((match) => match.isWin).length : wins;
+  const results = useMatchResults ? observed.length : wins + losses;
   const recap = results > 0
-    ? `Won **${wins} of ${results}** recent Competitive matches with known results.`
+    ? `Won **${resultWins} of ${results}** recent Competitive matches with known results.`
     : 'No recent Competitive results available.';
   const updates = buildRRHistory(mmrHistory);
   const net = updates.reduce((total, entry) => total + (entry.rrChange ?? entry.rr_change), 0);
   const momentum = updates.length ? ` Rank Rating moved **${formatRRChange(net)}** over ${updates.length} recorded updates.` : '';
 
+  const coach = reviewLatestMatch(recentMatches);
+  const coachHint = coach ? '\nStart with **Coach · Latest Match** for one replay question.' : '';
   const embed = new EmbedBuilder()
     .setColor(VALORANT_RED)
-    .setAuthor({ name: '◆ VALORANT / RANKED REPORT + COACH' })
-    .setTitle(String(riotId).slice(0, 256))
-    .setDescription(`**${descriptionParts[0]}**${descriptionParts.slice(1).map((part) => `  ·  ${part}`).join('')}\n\n**At a glance**\n${recap}${momentum}\nStart with **Coach · Latest Match** for one replay question.`);
+    .setAuthor({ name: playerData.mockData ? '◆ VALORANT / EXAMPLE REPORT' : '◆ VALORANT / RANKED REPORT + COACH' })
+    .setTitle(escapeMarkdown(String(riotId)).slice(0, 256))
+    .setDescription(`**${descriptionParts[0]}**${descriptionParts.slice(1).map((part) => `  ·  ${part}`).join('')}\n\n**At a glance**\n${recap}${momentum}${coachHint}`);
 
   const fields = [];
   const addFields = (...entries) => fields.push(...entries);
@@ -266,7 +306,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
 
   const matchesAvailable = Number(matchesAnalyzed) > 0;
   const combatValue = matchesAvailable ? [
-    `**${formatters.formatKDA(kills, deaths, assists)}** K/D/A  ·  ${formatters.formatKD(kills, deaths)} K/D`,
+    `**${formatters.formatKDA(kills, deaths, assists)}** K/D/A  ·  ${deaths === 0 && kills > 0 ? 'no deaths' : `${formatters.formatKD(kills, deaths)} K/D`}`,
     `**${formatters.formatACS(acsPerRound)}** ACS  ·  ${headshotPercent == null ? 'N/A' : formatters.formatPercent(headshotPercent)} headshots by hit${playerData.recordedHits ? ` (${playerData.recordedHits} hits)` : ''}`,
     `**Damage per round:** ${formatters.formatADR(adrPerRound)} dealt · ${formatters.formatDamageDelta(damageDeltaPerRound)} net`,
   ] : ['Competitive combat data unavailable.'];
@@ -277,7 +317,6 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     inline: true,
   });
 
-  const coach = reviewLatestMatch(recentMatches);
   if (coach) {
     const { match, score, opened, conceded, personalFirstKills, personalCoverage, openingBaseline, practice } = coach;
     const result = match.isWin ? 'Won' : 'Lost';
@@ -356,8 +395,8 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     ]);
     const results = statTable(['Map', 'Wins', 'Win %', 'Avg perf'], [13, 5, 5, 12], rows.map((row) => row.slice(0, 4)));
     const sides = statTable(['Map', 'Attack', 'Defense'], [13, 8, 8], rows.map((row) => [row[0], ...row.slice(4)]));
-    const summary = best ? `Best by win rate: ${safeLabel(best.map)} (minimum 5 results).`
-      : 'Best map requires 5 known results on one map.';
+    const summary = best ? `Highest recent map win rate: ${safeLabel(best.map)} (minimum 5 results).`
+      : 'Map comparison needs 5 known results on one map.';
     addFields({ name: '🗺 Competitive Maps', value: `${results}\n${summary}\nAvg perf = Performance Score (matches with a score).\nRecent sample only; not Riot Map Rating.` },
       { name: 'Competitive Maps · Rounds Won by Side', value: sides + '\nRounds won out of known rounds.' });
 
@@ -404,27 +443,50 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   const exactProgress = compareRoundWindows(recentMatches);
   const byRole = exactProgress.length === 0;
   const progress = byRole ? compareRoundWindows(recentMatches, { byRole }) : exactProgress;
-  if (progress.length) {
-    const record = (won, total) => `${won}/${total} (${Math.round(100 * won / total)}%)`;
-    const delta = (before, after) => `${formatRRChange(Math.round((after - before) * 100))} pp`;
-    const shown = progress.slice(0, 3);
-    const rows = shown.map(({ prior, recent }) => [
+  const changes = progress.map(({ prior, recent }) => {
+    const rateChange = recent.won / recent.total - prior.won / prior.total;
+    return { prior, recent, rateChange, roundsMoved: rateChange * recent.total };
+  }).filter(({ rateChange }) => rateChange !== 0)
+    .sort((a, b) => Math.abs(b.roundsMoved) - Math.abs(a.roundsMoved));
+
+  if (changes.length) {
+    const shown = changes.slice(0, 2);
+    const leading = shown[0];
+    const record = ({ won, total }) => `${Math.round(100 * won / total)}% (${won}/${total})`;
+    const matchCount = (key) => new Set(shown.flatMap((row) => [...row[key].matchIds])).size;
+    const rows = shown.map(({ prior, recent, rateChange }) => [
       byRole ? `${recent.role} / ${recent.side}` : `${recent.map} / ${recent.agent} / ${recent.side}`,
-      record(prior.won, prior.total), record(recent.won, recent.total),
-      delta(prior.won / prior.total, recent.won / recent.total),
+      record(prior), record(recent), formatRRChange(Math.round(rateChange * 100)),
     ]);
     const notes = shown.map(({ prior, recent }) => {
-      if (prior.knownOpeners < 10 || recent.knownOpeners < 10) return [];
-      return ['Your first kills:',
-        `${record(prior.firstKills, prior.knownOpeners)} → ${record(recent.firstKills, recent.knownOpeners)}`];
+      if (recent.role !== 'Duelist' || prior.knownOpeners < 10 || recent.knownOpeners < 10 ||
+          (!prior.firstKills && !recent.firstKills)) return [];
+      return [`First kills: ${prior.firstKills}/${prior.knownOpeners} → ${recent.firstKills}/${recent.knownOpeners}`];
     });
+    const side = leading.recent.side === 'attack' ? 'Attack' : 'Defense';
+    const equivalent = Math.abs(leading.roundsMoved).toFixed(1);
+    const direction = leading.roundsMoved < 0 ? 'fewer' : 'more';
+    const changeSummary = `**Biggest shift: ${side}.** About ${equivalent} ${direction} rounds won than at your earlier rate, over the latest ${leading.recent.total} rounds.`;
+    const other = shown[1];
+    const sameContext = other && (byRole ? other.recent.role === leading.recent.role
+      : other.recent.map === leading.recent.map && other.recent.agent === leading.recent.agent);
+    const offset = sameContext && Math.sign(other.roundsMoved) !== Math.sign(leading.roundsMoved)
+      ? ` The ${other.recent.side} shift went the other way, by about ${Math.abs(other.roundsMoved).toFixed(1)} rounds.`
+      : '';
+    const scope = `Same act · ${matchCount('prior')} earlier and ${matchCount('recent')} latest matches contributed.`;
     addFields({ name: '↗ Compare Your Recent Games',
-      value: groupedStatTable(['Earlier 5', 'Latest 5', 'Change'], [14, 14, 7], rows, notes) +
-        '\nSame act · pp = percentage points. Each sample needs 10 known rounds.' +
-        (byRole ? '\nMatched by role and side. Maps and agents may differ.' : '\nMatched by map, agent, and side.') });
+      value: [changeSummary + offset, scope,
+        groupedStatTable(['Earlier rounds', 'Latest rounds', 'Δ pts'], [15, 15, 6], rows, notes),
+        'Values are rounds won / played. Δ pts = change in win percentage.' +
+          (byRole ? ' Same role and side; maps may differ.' : ''),
+        ...(changes.length > shown.length ? [`Showing the ${shown.length} largest shifts of ${changes.length}.`] : []),
+      ].join('\n') });
+  } else if (progress.length) {
+    addFields({ name: '↗ Compare Your Recent Games',
+      value: 'No change in round win rate across the comparable groups.' });
   } else if (recentMatches.length >= 10) {
     addFields({ name: '↗ Compare Your Recent Games',
-      value: 'No comparable split in this sample. The comparison needs two sets of five matches in one act and at least 10 known rounds in each set with a matching map, agent, and side, or a matching role and side.' });
+      value: 'Not enough matching rounds to compare. Each side needs 10 recorded rounds in both match blocks from the same act.' });
   }
 
   const rrByMatch = new Map(mmrHistory.filter((entry) => entry?.matchId).map((entry) => [entry.matchId, entry]));
@@ -441,9 +503,33 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     const net = rrHistory.reduce((sum, entry) => sum + (entry.rrChange ?? entry.rr_change), 0);
     addFields({
       name: '↕ Observed RR Changes',
-      inline: true,
+      inline: false,
       value: `Last ${rrHistory.length} updates · oldest first · net ${formatRRChange(net)} RR\n\`\`\`\n${rrBars(rrHistory)}\n\`\`\``,
     });
+  }
+
+  const rrByResult = summarizeObservedRR(recentMatches, mmrHistory);
+  if (rrByResult.count) {
+    const rows = [['Match wins', rrByResult.wins], ['Match losses', rrByResult.losses]].map(([label, group]) => [
+      label, group?.games ?? '—', group ? formatRRChange(Number(group.average.toFixed(1))) : '—',
+      group ? `${formatRRChange(group.min)} to ${formatRRChange(group.max)}` : '—',
+    ]);
+    addFields({ name: 'RR After Wins and Losses',
+      value: statTable(['Result', 'Games', 'Avg RR', 'RR range'], [12, 5, 6, 14], rows) +
+        `\n${rrByResult.count} matches with linked RR in the same act${rrByResult.sameVersion ? ' and game version' : ''}. Known placements excluded.` });
+  }
+
+  const ranks = playerData.visibleRankResults;
+  if (ranks) {
+    const rows = [['Higher', ranks.higher], ['Lower', ranks.lower]]
+      .filter(([, group]) => group.games >= 40)
+      .map(([label, group]) => [label, `${group.wins}/${group.games}`, `${Math.round(100 * group.wins / group.games)}%`]);
+    if (rows.length) {
+      addFields({ name: 'Results by Opponents’ Visible Rank',
+        value: statTable(['Opp. rank', 'Wins', 'Win %'], [10, 8, 5], rows) +
+          '\nOpponent average compared with your rank in each match.' +
+          '\nSame act. Each row needs 40 games with all five opponent ranks.' });
+    }
   }
 
   const squad = recentMatches[0]?.teammates;
@@ -458,45 +544,58 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     });
   }
 
-  const parties = playerData.partySummary || [];
-  const teammates = playerData.teammateSummary || [];
-  const identity = (row) => row.key || row.riotId.toLowerCase();
-  const partyIds = new Set(parties.map(identity));
-  const comparison = [
-    ...parties.map((row) => ({ ...row, group: 'Party' })),
-    ...teammates.filter((row) => !partyIds.has(identity(row)))
-      .map((row) => ({ ...row, group: 'Team' })),
+  const queued = summarizeQueueGroups(recentMatches);
+  const partyNames = ['Solo', 'Duo', 'Trio', 'Four players', 'Five-stack'];
+  const record = ({ wins, games }) => games ? `${wins}W / ${games}G` : '—';
+  const shortLabel = (value, width) => {
+    const clean = String(value).replace(/[`\r\n]/g, ' ');
+    return tableWidth(clean) <= width ? clean : wrapTableText(clean, width - 1)[0] + '…';
+  };
+  const rows = [
+    ...queued.parties.map((row) => ({
+      ...row, label: row.complete
+        ? `${partyNames[row.members.length]} · you${row.members.length ? ` + ${row.members.length}` : ''}`
+        : 'Party · roster incomplete',
+    })),
+    ...queued.teammates.map((row) => ({ ...row, label: `${shortLabel(row.riotId, 25)} · non-party` })),
   ];
-  if (comparison.length) {
-    const players = comparison.slice(0, 6);
-    const rows = players.map((row) => [
-      row.riotId,
-      row.group,
-      row.decided ? `${row.wins}/${row.decided}` : '—',
+  if (rows.length) {
+    const shown = rows.slice(0, 6);
+    const values = shown.map((row) => [
+      row.label, record({ wins: row.wins, games: row.decided }),
       row.decided ? `${Math.round(100 * row.wins / row.decided)}%` : '—',
       row.roundGames ? formatRRChange(Number((row.roundDiff / row.roundGames).toFixed(1))) : '—',
-      row.tradeGames ? `${row.trades}/${row.tradeGames}` : '—',
     ]);
-    const recent = new Map(comparePartyResults(recentMatches, parties).map((row) => [identity(row), row]));
-    const saved = new Map((playerData.savedPartyResults || []).map((row) => [row.riotId.toLowerCase(), row]));
-    const record = ({ wins, games }) => `${wins}/${games} (${Math.round(100 * wins / games)}%)`;
-    const notes = players.map((player) => {
-      const split = recent.get(identity(player));
-      const history = saved.get(player.riotId.toLowerCase());
-      return [
-        ...(split ? [`Recent apart: ${record(split.withoutPartner)}`] : []),
-        ...(history ? [`Saved act with: ${record(history.together)}`, `Saved act apart: ${record(history.apart)}`] : []),
-      ];
+    const memberNotes = shown.map((row) => {
+      const members = [...(row.perMember?.values() || [])]
+        .sort((a, b) => b.trades - a.trades || b.games - a.games || a.name.localeCompare(b.name));
+      const notes = members.slice(0, 3).map((member) => {
+        if (row.games < 2) return `  ${shortLabel(member.name, 37)}`;
+        const trades = member.tradeGames ? `${member.trades}T/${member.tradeGames}G` : 'T —';
+        const kd = member.kdGames ? `${member.kills}/${member.deaths}${member.kdGames < member.games ? `/${member.kdGames}G` : ''}` : '—';
+        const stats = `${trades} · K/D ${kd}`;
+        const name = shortLabel(member.name, Math.max(1, Math.min(12, 37 - tableWidth(stats))));
+        return `  ${name} · ${stats}`;
+      });
+      if (members.length > 3) notes.push(`  +${members.length - 3} more`);
+      if (!row.perMember && row.games >= 2 && row.tradeGames) {
+        notes.push(`  ${row.trades}T in ${row.tradeGames} logged games`);
+      }
+      return notes;
     });
-    const parts = [];
-    if (rows.length) {
-      parts.push(groupedStatTable(['Group', 'Wins', 'Win %', 'Margin', 'Trades'], [5, 5, 5, 7, 8], rows, notes));
-      parts.push('**Party** = queued together. **Team** = played on your side. Party rows count only party games.');
-      if (notes.some((note) => note.length)) parts.push('**Apart** counts known games queued separately. Saved act rows use saved matches.');
-      parts.push('**Margin** = average rounds won minus lost. **Trades** = times they avenged your death within 5 seconds / games with kill records.');
-    }
-    if (comparison.length > rows.length) parts.push(`Showing ${rows.length} of ${comparison.length} players.`);
-    addFields({ name: '👥 How You Played Together', value: parts.join('\n') });
+    addFields({ name: '👥 Who You Queued With',
+      value: groupedStatTable(['Wins / games', 'Win %', 'Rounds/game'], [13, 6, 11], values, memberNotes) +
+        '\nRounds/game = average rounds won minus lost.' +
+        '\nT = trades after your death. K/D = kills/deaths. G = games with data.' +
+        (rows.length > shown.length ? ` Showing ${shown.length} of ${rows.length} groups.` : '') });
+  }
+
+  if (playerData.savedPartyResults?.length) {
+    const saved = playerData.savedPartyResults.slice(0, 3).map((row) =>
+      [row.riotId, record(row.together), record(row.apart)]);
+    addFields({ name: 'Saved Act · Party Partners',
+      value: groupedStatTable(['Queued with', 'Queued without'], [15, 15], saved) +
+        '\nWins and games across your saved matches in this act.' });
   }
 
   const extraParts = [];
@@ -530,9 +629,9 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   }
 
   let footerText = 'HenrikDev rank and match data';
-  if (!profileData && mmrData) {
+  if (!profileData && mmrData && !recentMatches.length) {
     footerText = 'HenrikDev rank data · Match data unavailable';
-  } else if (profileData && !mmrData) {
+  } else if ((profileData || recentMatches.length) && !mmrData) {
     footerText = 'Recent HenrikDev matches (Rank data unavailable)';
   } else if (accountData && !profileData && !mmrData) {
     footerText = 'HenrikDev account data only';

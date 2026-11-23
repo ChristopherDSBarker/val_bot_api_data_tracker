@@ -89,7 +89,7 @@ function formatKDA(k, d, a) {
  */
 function formatKD(kills, deaths) {
   if (kills === null || deaths === null || deaths === undefined) return 'N/A';
-  if (deaths === 0) return kills > 0 ? 'Infinity' : '0.00';
+  if (deaths === 0) return kills > 0 ? 'No deaths' : 'N/A';
   return formatRatio(kills / deaths);
 }
 

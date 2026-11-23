@@ -819,14 +819,21 @@ function normalizeMatch(match, player) {
       weaponKills[name] = (weaponKills[name] || 0) + 1;
     }
   }
-  const teammates = playerTeamKey ? getAllPlayers(match)
+  const roster = getAllPlayers(match);
+  const teammates = playerTeamKey ? roster
     .filter((other) => other && other !== player && normalizeTeamKey(getPlayerTeam(other)) === playerTeamKey) : [];
+  const enemies = enemyTeamKey ? roster
+    .filter((other) => other && other !== player && normalizeTeamKey(getPlayerTeam(other)) === enemyTeamKey) : [];
+  const tierOf = (member) => firstText(member?.tier?.name, member?.currenttier_patched);
   const tradeCredits = tradesAfterDeath(match, player.puuid);
   return {
     matchId: firstText(metadata.match_id, metadata.matchid),
     seasonId: firstText(metadata.season?.id),
+    gameVersion: firstText(metadata.game_version),
     completed: metadata.is_completed,
-    tier: firstText(player.tier?.name, player.currenttier_patched),
+    tier: tierOf(player),
+    enemyTiers: enemies.map(tierOf),
+    teamTiers: [player, ...teammates].map(tierOf),
     seasonLabel: firstText(metadata.season?.short),
     startedAt: firstText(metadata.started_at),
     durationMs: safeOptionalNumber(metadata.game_length_in_ms),
@@ -1320,6 +1327,8 @@ async function getMMRHistory(name, tag, region = 'na') {
     const normalizedHistory = history.map((entry) => ({
       matchId: firstText(entry.match_id, entry.matchid),
       performanceBonus: safeOptionalNumber(entry.rr_performance_bonus),
+      placement: entry.is_placement_match === true,
+      queue: firstText(entry.queue_id)?.toLowerCase() || null,
       currentRank: entry.currenttierpatched || entry.tier?.name || null,
       currentTierId: safeOptionalNumber(entry.currenttier ?? entry.tier?.tier),
       rr: safeOptionalNumber(entry.ranking_in_tier ?? entry.rr),

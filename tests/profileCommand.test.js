@@ -78,13 +78,50 @@ test('profile includes saved party results by default, and renders if the store 
   }
 
   const withHistory = await run();
-  const party = withHistory.find((field) => field.name.includes('How You Played Together'));
-  assert.match(party.value, /Saved act with: 3\/5 \(60%\)/);
-  assert.match(party.value, /Saved act apart: 4\/10 \(40%\)/);
+  const party = withHistory.find((field) => field.name.includes('Saved Act'));
+  assert.match(party.value, /3W \/ 5G/);
+  assert.match(party.value, /4W \/ 10G/);
 
   fail = true;
   assert.ok((await run()).some((field) => field.name.includes('Latest Match')));
   process.env.ENABLE_MATCH_HISTORY = 'false';
   assert.ok((await run()).some((field) => field.name.includes('Latest Match')));
   assert.equal(record.mock.callCount(), 2);
+});
+
+test('mock mode answers without an API key or a network call', async (t) => {
+  const saved = { key: process.env.HENRIK_API_KEY, mock: process.env.USE_MOCK_DATA };
+  delete process.env.HENRIK_API_KEY;
+  process.env.USE_MOCK_DATA = 'true';
+  t.after(() => {
+    if (saved.key === undefined) delete process.env.HENRIK_API_KEY;
+    else process.env.HENRIK_API_KEY = saved.key;
+    if (saved.mock === undefined) delete process.env.USE_MOCK_DATA;
+    else process.env.USE_MOCK_DATA = saved.mock;
+  });
+  const network = t.mock.method(require('../src/services/henrikClient'), 'get', async () => {
+    throw new Error('unexpected network call');
+  });
+  let reply;
+  await profile.execute({
+    options: { getString: (key) => ({ name: 'Test', tag: 'NA1', region: 'na' })[key] ?? null },
+    deferReply: async () => {}, editReply: async (value) => { reply = value; },
+  });
+  assert.equal(network.mock.callCount(), 0);
+  assert.match(reply.embeds[0].author.name, /EXAMPLE REPORT/);
+  assert.ok(reply.embeds[0].fields.some(({ name }) => name.includes('Recent Competitive')));
+});
+
+test('complete API failure yields one plain-language error reply', async (t) => {
+  for (const method of ['getPlayerAccount', 'getPlayerProfile', 'getPlayerMMR', 'getMMRHistory', 'getRecentMatches']) {
+    t.mock.method(api, method, async () => { throw new Error('upstream unavailable'); });
+  }
+  t.mock.method(api, 'isExperimentalValorantPipelineEnabled', () => false);
+  const replies = [];
+  await profile.execute({
+    options: { getString: (key) => ({ name: 'Test', tag: 'NA1', region: 'na' })[key] ?? null },
+    deferReply: async () => {}, editReply: async (value) => replies.push(value),
+  });
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].embeds[0].toJSON().title, 'Profile Unavailable');
 });

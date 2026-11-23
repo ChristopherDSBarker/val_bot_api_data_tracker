@@ -47,7 +47,7 @@ test('full profile keeps every report section across inline embeds', () => {
     kills: 18, deaths: 12, assists: 7, performanceScore: i === 0 ? null : 245,
     partyCheckComplete: i >= 5,
     teammates: [{ name: 'BruceBootyLee', tag: 'OwO', agent: 'Clove', sameParty: i < 5 }],
-    roundResults: Array.from({ length: 12 }, () => ({ side: 'attack', opened: true, won: true })),
+    roundResults: Array.from({ length: 12 }, () => ({ side: 'attack', opened: true, won: i >= 5 })),
   }));
   const partySummary = Array.from({ length: 6 }, (_, i) => ({
     key: i ? `peer-${i}` : 'brucebootylee#owo',
@@ -68,13 +68,13 @@ test('full profile keeps every report section across inline embeds', () => {
   for (const title of ['Competitive Snapshot', 'Combat', 'Rank Legacy', 'Agent Mastery', 'Lifetime Accolades',
     'Act Accolades', 'Competitive Maps', 'Rounds Won by Side', 'Sample Leaders & Economy', 'How Often',
     'Compare Your Recent Games', 'Recent Competitive', 'Match Stats', 'Observed RR Changes',
-    'Latest Shown Match', 'How You Played Together', 'Account & Rank Details']) assert.ok(text.includes(title), title);
+    'Latest Shown Match', 'Who You Queued With', 'Account & Rank Details']) assert.ok(text.includes(title), title);
   const codeBlocks = [...fields.flatMap((field) => [...field.value.matchAll(/```\n([\s\S]*?)\n```/g)])];
   assert.ok(codeBlocks.length >= 8);
   assert.ok(codeBlocks.every(([, table]) => table.split('\n').every((line) => line.length <= 42)));
-  assert.match(text, /Sunset \/ Jett \/ attack\n60\/60 \(100%\)/);
+  assert.match(text, /Sunset \/ Jett \/ attack\n0% \(0\/60\)\s+100% \(60\/60\)/);
   assert.match(text, /BruceBootyLee#OwO/);
-  assert.match(fields.find((field) => field.name.includes('How You Played Together')).value, /Recent apart: 5\/5/);
+  assert.doesNotMatch(text, /Recent apart/);
   assert.ok(reply.every((page) => !page.files));
   assert.ok(fields.every((field) => field.value.length <= 1024));
 });

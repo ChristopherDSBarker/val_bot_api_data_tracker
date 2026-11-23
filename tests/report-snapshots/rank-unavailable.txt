@@ -1,0 +1,107 @@
+=== Page 1 ===
+
+Player#NA1
+
+**Rank unavailable**
+
+**At a glance**
+Won **3 of 3** recent Competitive matches with known results.
+Start with **Coach · Latest Match** for one replay question.
+
+[◆ Competitive Snapshot]
+**Matches reviewed:** 3
+**Win rate:** 100.0%
+**Most played in sample:** N/A
+
+[Combat]
+**0/0/0** K/D/A  ·  N/A K/D
+**N/A** ACS  ·  N/A headshots by hit
+**Damage per round:** N/A dealt · N/A net
+
+[🎯 Coach · Latest Match]
+**Won 13–8 on Sunset.** · Jett (Duelist)
+Your team won 4/6 rounds after getting the first kill.
+It won 4/6 after the opponent got it.
+**Your first kills:** 1/12 known openings (8%).
+**Earlier as Duelist:** 2/24 (8%) across 2 matches this act.
+**Change:** +0 percentage points.
+**Replay cue:** On attack, check one first fight. Was a teammate close enough to trade if you fell?
+
+[📋 Latest Session · Recent Sample]
+3 matches in the recent session. Won 3 of 3 matches with a known result.
+
+[Career Data Availability]
+Agent Mastery and Accolades require experimental career data.
+
+[🗺 Competitive Maps]
+```
+Map           Wins  Win % Avg perf
+Sunset        3/3   100%  242.0 (3)
+```
+Map comparison needs 5 known results on one map.
+Avg perf = Performance Score (matches with a score).
+Recent sample only; not Riot Map Rating.
+
+[Competitive Maps · Rounds Won by Side]
+```
+Map           Attack   Defense
+Sunset        24/36    —
+```
+Rounds won out of known rounds.
+
+[Recent Sample Leaders & Economy]
+**Highest agent win rate:** Jett · 3/3 wins
+Duelist 3/3 (100%)
+Your recent baseline: 3/3 (100%). Compare after 3 games in each of two roles.
+**Queue partner:** Need 3 confirmed party results with one player.
+**Gun:** Insufficient named gun events.
+
+```
+Measure            Value   Sample
+Spent / round      —       —
+Gear value / round —       —
+Spend / round won  —       —
+Damage / 1k spent  —       —
+```
+Spent = credits you paid. Gear value includes carried gear.
+Spend / round won = your spend ÷ team rounds won.
+Damage / 1k spent = your damage per 1,000 credits.
+
+[⚑ How Often Did Your Team Win the Round?]
+Your team won **12 of 18** rounds after getting the first kill. Your team won **12 of 18** rounds after giving up the first kill.
+```
+Situation                Won       Win %
+Playing attack           24/36     67%
+Team got first kill      12/18     67%
+Opponent got first kill  12/18     67%
+```
+Each row uses rounds with the required data. A round can count in both a side and a first-kill row.
+
+[▤ Recent Competitive · Newest First]
+```
+#  R Score Map           Agent
+1  W 13-8  Sunset        Jett
+2  W 13-8  Sunset        Jett
+3  W 13-8  Sunset        Jett
+```
+
+[Recent Competitive · Match Stats]
+```
+#  K/D/A      ACS   Perf     RR
+1  18/12/4    —     242.0    —
+2  18/12/4    —     242.0    —
+3  18/12/4    —     242.0    —
+```
+ACS = Average Combat Score · Perf = Performance Score · — = unavailable
+
+[👥 Who You Queued With]
+```
+Wins / games  Win %  Rounds/game
+
+Solo · you
+3W / 3G       100%   —
+```
+Rounds/game = average rounds won minus lost.
+T = trades after your death. K/D = kills/deaths. G = games with data.
+
+Recent HenrikDev matches (Rank data unavailable) · Up to 10 Competitive matches

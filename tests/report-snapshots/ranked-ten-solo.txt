@@ -1,0 +1,152 @@
+=== Page 1 ===
+
+Player#NA1
+
+**Gold 3**  ·  41 RR
+
+**At a glance**
+Won **5 of 10** recent Competitive matches with known results. Rank Rating moved **+100** over 5 recorded updates.
+Start with **Coach · Latest Match** for one replay question.
+
+[◆ Competitive Snapshot]
+**Matches reviewed:** 10
+**Win rate:** 50.0%
+**Most played in sample:** N/A
+
+[Combat]
+**0/0/0** K/D/A  ·  N/A K/D
+**N/A** ACS  ·  N/A headshots by hit
+**Damage per round:** N/A dealt · N/A net
+
+[🎯 Coach · Latest Match]
+**Won 13–8 on Sunset.** · Jett (Duelist)
+Your team won 4/6 rounds after getting the first kill.
+It won 4/6 after the opponent got it.
+**Your first kills:** 1/12 known openings (8%).
+**Earlier as Duelist:** 9/108 (8%) across 9 matches this act.
+**Change:** +0 percentage points.
+**Replay cue:** On attack, check one first fight. Was a teammate close enough to trade if you fell?
+
+[📋 Latest Session · Recent Sample]
+10 matches in the recent session. Won 5 of 10 matches with a known result.
+Observed RR: +10 across 10/10 matches.
+
+[Career Data Availability]
+Agent Mastery and Accolades require experimental career data.
+
+[🗺 Competitive Maps]
+```
+Map           Wins  Win % Avg perf
+Sunset        5/10  50%   242.0 (10)
+```
+Highest recent map win rate: Sunset (minimum 5 results).
+Avg perf = Performance Score (matches with a score).
+Recent sample only; not Riot Map Rating.
+
+[Competitive Maps · Rounds Won by Side]
+```
+Map           Attack   Defense
+Sunset        55/120   —
+```
+Rounds won out of known rounds.
+
+[Recent Sample Leaders & Economy]
+**Highest agent win rate:** Jett · 5/10 wins
+Duelist 5/10 (50%)
+Your recent baseline: 5/10 (50%). Compare after 3 games in each of two roles.
+**Queue partner:** Need 3 confirmed party results with one player.
+**Gun:** Insufficient named gun events.
+
+```
+Measure            Value   Sample
+Spent / round      —       —
+Gear value / round —       —
+Spend / round won  —       —
+Damage / 1k spent  —       —
+```
+Spent = credits you paid. Gear value includes carried gear.
+Spend / round won = your spend ÷ team rounds won.
+Damage / 1k spent = your damage per 1,000 credits.
+
+[⚑ How Often Did Your Team Win the Round?]
+Your team won **30 of 60** rounds after getting the first kill. Your team won **25 of 60** rounds after giving up the first kill.
+```
+Situation                Won       Win %
+Playing attack           55/120    46%
+Team got first kill      30/60     50%
+Opponent got first kill  25/60     42%
+```
+Each row uses rounds with the required data. A round can count in both a side and a first-kill row.
+
+[↗ Compare Your Recent Games]
+**Biggest shift: Attack.** About 25.0 more rounds won than at your earlier rate, over the latest 60 rounds.
+Same act · 5 earlier and 5 latest matches contributed.
+```
+Earlier rounds  Latest rounds   Δ pts
+
+Sunset / Jett / attack
+25% (15/60)     67% (40/60)     +42
+First kills: 5/60 → 5/60
+```
+Values are rounds won / played. Δ pts = change in win percentage.
+
+[▤ Recent Competitive · Newest First]
+```
+#  R Score Map           Agent
+1  W 13-8  Sunset        Jett
+2  W 13-8  Sunset        Jett
+3  W 13-8  Sunset        Jett
+4  W 13-8  Sunset        Jett
+5  W 13-8  Sunset        Jett
+6  L 8-13  Sunset        Jett
+7  L 8-13  Sunset        Jett
+8  L 8-13  Sunset        Jett
+9  L 8-13  Sunset        Jett
+10 L 8-13  Sunset        Jett
+```
+
+[Recent Competitive · Match Stats]
+```
+#  K/D/A      ACS   Perf     RR
+1  18/12/4    —     242.0    +20
+2  18/12/4    —     242.0    +20
+3  18/12/4    —     242.0    +20
+4  18/12/4    —     242.0    +20
+5  18/12/4    —     242.0    +20
+6  18/12/4    —     242.0    -18
+7  18/12/4    —     242.0    -18
+8  18/12/4    —     242.0    -18
+9  18/12/4    —     242.0    -18
+10 18/12/4    —     242.0    -18
+```
+ACS = Average Combat Score · Perf = Performance Score · — = unavailable
+
+[↕ Observed RR Changes]
+Last 5 updates · oldest first · net +100 RR
+```
+          │████       +20
+          │████       +20
+          │████       +20
+          │████       +20
+          │████       +20
+```
+
+[RR After Wins and Losses]
+```
+Result       Games Avg RR RR range
+Match wins   5     +20    +20 to +20
+Match losses 5     -18    -18 to -18
+```
+10 matches with linked RR in the same act. Known placements excluded.
+
+[👥 Who You Queued With]
+```
+Wins / games  Win %  Rounds/game
+
+Solo · you
+5W / 10G      50%    —
+```
+Rounds/game = average rounds won minus lost.
+T = trades after your death. K/D = kills/deaths. G = games with data.
+
+HenrikDev rank and match data · Up to 10 Competitive matches

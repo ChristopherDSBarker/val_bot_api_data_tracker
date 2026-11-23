@@ -173,3 +173,9 @@ The card now explains purchases and equipment value in plain English. It also ha
 Riot's game-update index still listed 13.10. Compared with the in-game reference, the report supports recent match scores and RR, rank legacy, mastery levels, and now accolades from the act matching the latest timestamped match. Act selection joins by season ID. A missing season record yields no act section. Official map grades, calibration, act border progress, and replay bookmarks are still client-side gaps for this bot.
 
 The new comparison uses two non-overlapping five-match blocks within the latest observed act. It matches map, agent, and side and requires at least ten known rounds on each side of a comparison. This version does not store a training baseline across lookups. Tracker.gg-style rank-relative benchmarks and Aimlabs tapping, tracking, and switching task results are outside current coverage.
+
+## Rank Rating comparisons
+
+The report matches RR updates to known win/loss outcomes by match ID. The table shows the number of games, average RR, and observed range for wins and losses in the same act. When the latest match has a game version, the table uses that exact version. It excludes known placements and explicit non-Competitive updates. New saved match records retain the API game version when present.
+
+[Riot's Rank Rating explanation](https://playvalorant.com/en-us/news/dev/ask-valorant-rank-rating-edition/) describes hidden MMR and visible RR as separate values. Estimating an Elo constant from the same RR changes and inverting the equation cannot independently verify opponent strength. The report therefore shows observed RR directly. An opponent model would need a connected set of match rosters, a separate validation target, and error measured on later matches.

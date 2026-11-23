@@ -11,6 +11,8 @@ test('saved matches survive restart, dedupe concurrent requests, and keep party 
   const file = path.join(dir, 'matches.jsonl');
   const matches = Array.from({ length: 17 }, (_, i) => ({
     matchId: String(i), seasonId: i === 16 ? 'prior' : 'act', startedAt: '2026-11-22T20:00:00Z',
+    rrChange: i === 0 ? 0 : undefined,
+    enemyTiers: i === 0 ? Array(5).fill('Gold 1') : undefined,
     isWin: i % 2 === 0, partyCheckComplete: i >= 5 && i < 15,
     teammates: i < 5 ? [{ sameParty: true, puuid: 'raw-partner-id' }] : [],
   }));
@@ -20,6 +22,9 @@ test('saved matches survive restart, dedupe concurrent requests, and keep party 
   const restart = createMatchStore(file);
   const rows = await restart.recordAndRead('guild-a', 'raw-player-id', []);
   assert.equal(rows.length, 17);
+  assert.equal(rows[0].rrChange, 0);
+  assert.equal(rows[0].enemyAvgTier, 9);
+  assert.deepEqual(rows[0].enemyTiers, Array(5).fill('Gold 1'));
   assert.deepEqual(await restart.recordAndRead('guild-b', 'raw-player-id', []), []);
   const disk = await fs.readFile(file, 'utf8');
   assert.doesNotMatch(disk, /raw-(player|partner)-id/);

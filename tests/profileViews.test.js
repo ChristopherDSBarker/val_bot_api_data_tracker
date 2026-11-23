@@ -53,17 +53,20 @@ test('round table uses separate observed denominators for sides and first kills'
   assert.match(table, /Opponent got first kill\s+1\/1\s+100%/);
 });
 
-test('teammate comparison shows one row per player and uses party wins when available', () => {
-  const teammate = { key: 'one', riotId: 'Skydemo#7618', games: 7, wins: 2, decided: 7 };
-  const party = { ...teammate, games: 5, wins: 1, decided: 5, roundDiff: -10, roundGames: 5, trades: 3, tradeGames: 5 };
-  const card = createProfileEmbed({ teammateSummary: [teammate], partySummary: [party] }).toJSON();
-  const table = card.fields.find((field) => field.name.includes('How You Played Together')).value;
-  assert.equal(table.match(/Skydemo#7618/g).length, 1);
-  const tables = [...table.matchAll(/```\n([\s\S]*?)\n```/g)];
-  assert.equal(tables.length, 1);
-  assert.ok(tables.every(([, body]) => body.split('\n').every((line) => line.length <= 37)));
-
-  assert.match(table, /Skydemo#7618\nParty\s+1\/5\s+20%\s+-2\s+3\/5/);
+test('teammate comparison groups a recurring party rather than duplicating wins per player', () => {
+  const member = (name) => ({ name, tag: 'NA1', sameParty: true });
+  const recentMatches = Array.from({ length: 5 }, (_, i) => ({
+    matchId: String(i), partyCheckComplete: true, teammates: [member('DuoA'), member('DuoB')],
+    isWin: i === 0, roundDiff: -2,
+  }));
+  const card = createProfileEmbed({}, { recentMatches }).toJSON();
+  const table = card.fields.find((field) => field.name.includes('Who You Queued With')).value;
+  assert.match(table, /Trio · you \+ 2/);
+  assert.match(table, /DuoA#NA1/);
+  assert.match(table, /DuoB#NA1/);
+  assert.equal((table.match(/1W \/ 5G/g) || []).length, 1);
+  assert.match(table, /Rounds\/game/);
+  assert.doesNotMatch(table, /Recent apart/);
 });
 
 test('progress keeps the full map, agent, and side on their own line', () => {
@@ -75,8 +78,10 @@ test('progress keeps the full map, agent, and side on their own line', () => {
   }));
   const card = createProfileEmbed({}, { recentMatches }).toJSON();
   const progress = card.fields.find((field) => field.name.includes('Compare Your')).value;
-  assert.match(progress, /Earlier 5\s+Latest 5/);
-  assert.match(progress, /Sunset \/ Jett \/ attack\n1\/12 \(8%\)\s+13\/24 \(54%\)/);
+  assert.match(progress, /Earlier rounds\s+Latest rounds/);
+  assert.match(progress, /5 earlier and 5 latest matches contributed/);
+  assert.match(progress, /Biggest shift: Attack/);
+  assert.match(progress, /Sunset \/ Jett \/ attack\n8% \(1\/12\)\s+54% \(13\/24\)\s+\+46/);
 });
 
 test('role comparison uses a personal baseline, names a single-map sample, and requires two eligible roles', () => {
@@ -88,4 +93,22 @@ test('role comparison uses a personal baseline, names a single-map sample, and r
   assert.match(read([...duelist, ...controller]), /\+17 percentage points vs your recent baseline of 50%/);
   assert.match(read([...duelist, ...controller]), /Duelist: all 3 on Ascent/);
   assert.doesNotMatch(read(duelist), /Highest role win rate/);
+});
+
+test('comparison leads with the larger round-equivalent shift and omits Controller opening kills', () => {
+  const recentMatches = Array.from({ length: 10 }, (_, i) => ({
+    matchId: String(i), seasonId: 'act', startedAt: new Date(Date.UTC(2026, 10, i + 1)).toISOString(),
+    role: 'Controller', agent: 'Omen', map: 'Sunset',
+    roundResults: ['attack', 'defense'].flatMap((side) => {
+      const newer = i >= 5;
+      const rounds = side === 'attack' ? 12 : 10;
+      const wins = side === 'attack' ? (newer ? 6 : 8) : (newer ? 5 : 4);
+      return Array.from({ length: rounds }, (_, r) => ({ side, won: r < wins, playerGotFirstKill: r === 0 }));
+    }),
+  }));
+  const field = createProfileEmbed({}, { recentMatches }).toJSON().fields
+    .find(({ name }) => name.includes('Compare Your'));
+  assert.match(field.value, /Attack.*10\.0 fewer rounds.*defense.*5\.0 rounds/);
+  assert.doesNotMatch(field.value, /First kills/);
+  assert.ok(field.value.indexOf('Sunset / Omen / attack') < field.value.indexOf('Sunset / Omen / defense'));
 });

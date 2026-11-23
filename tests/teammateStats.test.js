@@ -33,15 +33,31 @@ test('party reports require a positive same-match party ID and exclude ordinary 
   assert.deepEqual([party.games, party.wins, party.roundDiff], [1, 1, 4]);
 });
 
-test('party splits exclude unknown rosters and duplicate matches', () => {
-  const { comparePartyResults } = require('../src/services/teammateStats');
-  const partner = { key: 'duo', riotId: 'Duo#NA1' };
-  const together = { matchId: '1', isWin: true, teammates: [{ puuid: 'duo', sameParty: true }] };
-  const [row] = comparePartyResults([together, together,
+test('queue groups distinguish verified solo, known parties, and incomplete data', () => {
+  const { summarizeQueueGroups } = require('../src/services/teammateStats');
+  const mate = { puuid: 'p', name: 'Duo', tag: 'NA1', sameParty: true };
+  const duo = { matchId: '1', isWin: true, partyCheckComplete: true, teammates: [mate] };
+  const { parties } = summarizeQueueGroups([duo, duo,
     { matchId: '2', isWin: false, partyCheckComplete: true, teammates: [] },
     { matchId: '3', isWin: false, teammates: [] },
-    { matchId: '4', isWin: true, teammates: [{ puuid: 'duo', sameParty: false }] },
-  ], [partner]);
-  assert.deepEqual(row.withPartner, { wins: 1, games: 1 });
-  assert.deepEqual(row.withoutPartner, { wins: 0, games: 1 });
+    { matchId: '4', isWin: true, teammates: [mate] },
+  ]);
+  assert.deepEqual(parties.map(({ members, complete, wins, games }) => [members, complete, wins, games]),
+    [[['Duo#NA1'], true, 1, 1], [[], true, 0, 1], [['Duo#NA1'], false, 1, 1]]);
+});
+
+test('member stats stay inside their exact lineup and require paired kills and deaths', () => {
+  const { summarizeQueueGroups } = require('../src/services/teammateStats');
+  const a = { puuid: 'a', name: 'A', tag: 'NA1', sameParty: true, kills: 18, deaths: 12, trades: 2 };
+  const b = { puuid: 'b', name: 'B', tag: 'NA1', sameParty: true, kills: 11 };
+  const c = { puuid: 'c', name: 'C', tag: 'NA1', sameParty: false, trades: 9 };
+  const game = (matchId, teammates) => ({ matchId, teammates, partyCheckComplete: true, isWin: true });
+  const { parties } = summarizeQueueGroups([
+    game('one', [a, b, c]), game('two', [b, a, c]), game('three', [a, c]),
+  ]);
+  assert.deepEqual([...parties[0].perMember.keys()], ['a', 'b']);
+  const member = parties[0].perMember.get('a');
+  assert.deepEqual([member.kills, member.deaths, member.trades, member.tradeGames], [36, 24, 4, 2]);
+  assert.equal(parties[0].perMember.get('b').kdGames, 0);
+  assert.equal(parties[1].perMember.get('a').trades, 2);
 });

@@ -4,8 +4,26 @@ Player#NA1
 
 **Gold 3**  ·  41 RR
 
-**At a glance**
-No recent Competitive results available.
+[🎯 Coach · Latest Match]
+No completed match with a known result to review.
+
+[📈 Momentum]
+No recent Rank Rating updates.
+
+[🧭 Your Roles]
+No role results in this sample.
+
+[👥 Who You Queued With]
+No confirmed queue groups with known results.
+
+[📄 Details]
+Open **Details** for the full match log, maps, economy, party stats, and career.
+
+HenrikDev rank data · Match data unavailable · Up to 10 Competitive matches
+
+=== Page 2 ===
+
+Ranked Report · Details
 
 [Combat]
 Competitive combat data unavailable.
@@ -13,6 +31,9 @@ Competitive combat data unavailable.
 [Career Data Availability]
 Agent Mastery: —
 Accolades: —
+
+[Account & Rank Details]
+**Peak Season:** Episode 7, Act 3
 
 [◆ Sample Coverage · 0 matches]
 ```
@@ -34,5 +55,3 @@ Career        Beta career data     0/2
 **Rounds/game** Average rounds won minus lost · **RR** Rank Rating
 **Spend / round won** Your spend divided by team rounds won
 **Spent** Credits paid · **T** Trades after your death · **W** Wins
-
-HenrikDev rank data · Match data unavailable · Up to 10 Competitive matches

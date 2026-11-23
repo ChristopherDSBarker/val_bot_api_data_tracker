@@ -212,6 +212,16 @@ function rrBars(entries) {
  * @returns {EmbedBuilder}
  */
 const reportFields = new WeakMap();
+const reportSummaries = new WeakMap();
+
+function seasonLabel(value) {
+  const text = String(value ?? '').trim();
+  const episode = /^e(\d+)a(\d+)$/i.exec(text);
+  if (episode) return `Episode ${Number(episode[1])}, Act ${Number(episode[2])}`;
+  const season = /^v(\d+)a(\d+)$/i.exec(text);
+  if (season) return `Season ${Number(season[1])}, Act ${Number(season[2])}`;
+  return /^(Episode|Season) .+ Act /i.test(text) ? text : 'Unavailable';
+}
 
 function createProfileEmbed(playerData, context = {}, legacyMMRData = null, legacyRecentMatches = null) {
   const isContextBundle = Object.prototype.hasOwnProperty.call(context, 'profile')
@@ -546,17 +556,13 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   const queued = summarizeQueueGroups(recentMatches);
   const partyNames = ['Solo', 'Duo', 'Trio', 'Four players', 'Five-stack'];
   const record = ({ wins, games }) => games ? `${wins}W / ${games}G` : '—';
-  const shortLabel = (value, width) => {
-    const clean = String(value).replace(/[`\r\n]/g, ' ');
-    return tableWidth(clean) <= width ? clean : wrapTableText(clean, width - 1)[0] + '…';
-  };
   const rows = [
     ...queued.parties.map((row) => ({
       ...row, label: row.complete
         ? `${partyNames[row.members.length]} · you${row.members.length ? ` + ${row.members.length}` : ''}`
         : 'Party · roster incomplete',
     })),
-    ...queued.teammates.map((row) => ({ ...row, label: `${shortLabel(row.riotId, 25)} · non-party` })),
+    ...queued.teammates.map((row) => ({ ...row, label: `${row.riotId} · teammate, not in party` })),
   ];
   if (rows.length) {
     const shown = rows.slice(0, 6);
@@ -568,13 +574,14 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
     const memberNotes = shown.map((row) => {
       const members = [...(row.perMember?.values() || [])]
         .sort((a, b) => b.trades - a.trades || b.games - a.games || a.name.localeCompare(b.name));
-      const notes = members.slice(0, 3).map((member) => {
-        if (row.games < 2) return `  ${shortLabel(member.name, 37)}`;
+      const notes = members.slice(0, 3).flatMap((member) => {
+        if (row.games < 2) return wrapTableText(String(member.name).replace(/[`\r\n]/g, ' '), 38).map((line) => `  ${line}`);
         const trades = member.tradeGames ? `${member.trades}T/${member.tradeGames}G` : 'T —';
         const kd = member.kdGames ? `${member.kills}/${member.deaths}${member.kdGames < member.games ? `/${member.kdGames}G` : ''}` : '—';
         const stats = `${trades} · K/D ${kd}`;
-        const name = shortLabel(member.name, Math.max(1, Math.min(12, 37 - tableWidth(stats))));
-        return `  ${name} · ${stats}`;
+        const name = String(member.name).replace(/[`\r\n]/g, ' ');
+        return tableWidth(name) + tableWidth(stats) <= 35 ? [`  ${name} · ${stats}`]
+          : [...wrapTableText(name, 38).map((line) => `  ${line}`), `  ${stats}`];
       });
       if (members.length > 3) notes.push(`  +${members.length - 3} more`);
       if (!row.perMember && row.games >= 2 && row.tradeGames) {
@@ -603,7 +610,7 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
   }
 
   if (peakSeason !== 'N/A' && peakSeason !== null) {
-    extraParts.push(`**Peak Season:** ${peakSeason}`);
+    extraParts.push(`**Peak Season:** ${seasonLabel(peakSeason)}`);
   }
 
   if (leaderboardRank !== null) {
@@ -660,6 +667,28 @@ function createProfileEmbed(playerData, context = {}, legacyMMRData = null, lega
 
   embed.setFooter({ text: footerText });
 
+  const roles = summarizeRoles(recentMatches, roleOf);
+  const roleRate = (row) => `${Math.round(100 * row.wins / row.games)}%`;
+  const roleRows = roles.roles.slice().sort((a, b) => b.games - a.games);
+  const roleSummary = roleRows.length ? [
+    `Overall: ${roleRate(roles.baseline)} (${roles.baseline.wins} wins in ${roles.baseline.games} games).`,
+    ...roleRows.map((row) => `${row.role}: ${roleRate(row)} (${row.wins} of ${row.games} wins)`),
+  ].join('\n') : 'No role results in this sample.';
+  const partySummary = queued.parties.filter((row) => row.decided).slice(0, 2).map((row) => {
+    const type = row.complete ? partyNames[row.members.length] : 'Party · roster incomplete';
+    const members = row.members.map((name) => escapeMarkdown(String(name).slice(0, 60)));
+    return `**${type}**${members.length ? ` · ${members.join(', ')}` : ''}\n${record({ wins: row.wins, games: row.decided })} (${Math.round(100 * row.wins / row.decided)}%)`;
+  }).join('\n');
+  const summaryCoach = coach
+    ? `**${coach.match.isWin ? 'Won' : 'Lost'}${coach.score ? ` ${coach.score}` : ''} on ${escapeMarkdown(String(coach.match.map || 'unknown map').slice(0, 60))}.**\n${coach.practice}`
+    : 'No completed match with a known result to review.';
+  reportSummaries.set(embed, [
+    { name: '🎯 Coach · Latest Match', value: summaryCoach },
+    { name: '📈 Momentum', value: updates.length ? `${formatRRChange(net)} Rank Rating over ${updates.length} updates, ${directionRR}.` : 'No recent Rank Rating updates.' },
+    { name: '🧭 Your Roles', value: roleSummary },
+    { name: '👥 Who You Queued With', value: partySummary || 'No confirmed queue groups with known results.' },
+    { name: '📄 Details', value: 'Open **Details** for the full match log, maps, economy, party stats, and career.' },
+  ]);
   reportFields.set(embed, fields);
   embed.setFields(fields.filter((field) => field.value.length <= 1024).slice(0, 25));
   return embed;
@@ -770,7 +799,7 @@ function createMMREmbed(mmrData) {
       },
       {
         name: 'Peak',
-        value: `**Peak Rank:** ${peakRank}\n**Peak Season:** ${peakSeason}`,
+        value: `**Peak Rank:** ${peakRank}\n**Peak Season:** ${seasonLabel(peakSeason)}`,
         inline: false,
       }
     );
@@ -796,13 +825,15 @@ function createMMREmbed(mmrData) {
 function createProfileReplies(embed) {
   const { fields: visibleFields = [], ...header } = embed.toJSON();
   const allFields = reportFields.get(embed) || visibleFields;
-  const pages = [];
+  const summary = reportSummaries.get(embed);
+  const pages = summary ? [{ embeds: [{ ...header, description: header.description?.split('\n\n')[0], fields: summary }],
+    allowedMentions: { parse: [] } }] : [];
   let fields = [];
-  let size = [header.title, header.description, header.author?.name, header.footer?.text]
+  let size = summary ? 'Ranked Report · Details'.length : [header.title, header.description, header.author?.name, header.footer?.text]
     .reduce((sum, text) => sum + (text?.length || 0), 0);
 
   function finishPage() {
-    const pageHeader = pages.length ? { title: 'Ranked Report · Continued', color: header.color } : header;
+    const pageHeader = pages.length ? { title: summary && pages.length === 1 ? 'Ranked Report · Details' : 'Ranked Report · Continued', color: header.color } : header;
     pages.push({ embeds: [{ ...pageHeader, fields }], allowedMentions: { parse: [] } });
     fields = [];
     size = 'Ranked Report · Continued'.length;

@@ -23,7 +23,7 @@ function card(matches, { mmr = { currentRank: 'Gold 3', currentRR: 41 }, profile
   const wins = known.filter((match) => match.isWin).length;
   return createProfileEmbed({ ...mmr, riotId, matchesAnalyzed: matches.length, wins,
     losses: known.length - wins, winPercent: known.length ? wins * 100 / known.length : null,
-    mapSummary: summarizeMaps(matches), career, ...profile },
+    mapSummary: summarizeMaps(matches), career, peakSeason: 'e7a3', ...profile },
   { recentMatches: matches, mmr, profile: matches.length ? profile : null,
     mmrHistory: mmr ? matches.map((match) => ({ matchId: match.matchId, rrChange: match.isWin ? 20 : -18 })) : [] });
 }
@@ -61,6 +61,15 @@ const scenarios = {
 for (const [name, scenario] of Object.entries(scenarios)) {
   test(`report contract: ${name}`, () => {
     const pages = createProfileReplies(scenario());
+    if (name !== 'all-api-failure') {
+      const summary = pages[0].embeds[0];
+      assert.equal(summary.fields.length, 5);
+      assert.ok(summary.fields.every((field) => !/Coverage|Legend/.test(field.name)));
+      const summarySize = [summary.title, summary.description, summary.footer?.text, summary.author?.name,
+        ...summary.fields.flatMap(({ name, value }) => [name, value])].reduce((sum, item) => sum + (item?.length || 0), 0);
+      assert.ok(summarySize < 1800);
+      assert.ok(pages.slice(1).some((page) => page.embeds[0].fields.some((field) => field.name.includes('Sample Coverage'))));
+    }
     for (const page of pages) {
       assert.equal(page.files, undefined);
       const { title, description, footer, author, fields } = page.embeds[0];

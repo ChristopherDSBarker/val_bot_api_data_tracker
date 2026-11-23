@@ -7,7 +7,7 @@ const { matchStore, historicalPartySplits } = require('../services/store');
 const { SlashCommandBuilder } = require('discord.js');
 const valorantApi = require('../services/valorantApi');
 const embeds = require('../utils/embeds');
-const { sendProfilePages } = require('../utils/profilePagination');
+const pagination = require('../utils/profilePagination');
 const { summarizeTeammates } = require('../services/teammateStats');
 const { summarizeMaps } = require('../services/valorantCareer');
 
@@ -184,7 +184,7 @@ module.exports = {
         mmrHistory,
         recentMatches,
       });
-      await sendProfilePages(interaction, embeds.createProfileReplies(profileEmbed));
+      await pagination.sendProfilePages(interaction, embeds.createProfileReplies(profileEmbed));
     } catch (error) {
       console.error('[ERROR] Valorant profile command failed:', error);
       const errorEmbed = embeds.createErrorEmbed(

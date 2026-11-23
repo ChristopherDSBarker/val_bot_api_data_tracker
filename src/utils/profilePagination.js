@@ -10,13 +10,14 @@ function pagePayload(pages, index, reportId) {
   const button = (target, label, disabled) => new ButtonBuilder()
     .setCustomId(`${PREFIX}${reportId}:${label}:${target}`).setLabel(label)
     .setStyle(ButtonStyle.Secondary).setDisabled(disabled);
+  const hasSummary = pages[0].embeds[0].fields?.some((field) => field.name === '📄 Details');
   return {
     ...pages[index],
     components: [new ActionRowBuilder().addComponents(
-      button(Math.max(0, index - 1), 'Previous', index === 0),
+      button(Math.max(0, index - 1), hasSummary && index === 1 ? 'Summary' : 'Previous', index === 0),
       new ButtonBuilder().setCustomId('ranked-page-count')
         .setLabel(`Page ${index + 1} of ${pages.length}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-      button(Math.min(pages.length - 1, index + 1), 'Next', index === pages.length - 1),
+      button(Math.min(pages.length - 1, index + 1), hasSummary && index === 0 ? 'Details' : 'Next', index === pages.length - 1),
     )],
   };
 }
@@ -41,7 +42,7 @@ function createProfilePager(directory, clock = Date.now) {
   }
 
   async function sendProfilePages(interaction, pages) {
-    if (pages.length === 1) return interaction.editReply(pages[0]);
+    if (pages.length === 1 || !/^\d{1,20}$/.test(interaction.id || '')) return interaction.editReply(pages[0]);
     const now = clock();
     try {
       await fs.mkdir(directory, { recursive: true, mode: 0o700 });
@@ -58,7 +59,7 @@ function createProfilePager(directory, clock = Date.now) {
 
   async function handleProfilePage(button) {
     const reply = (content) => button.reply({ content, flags: MessageFlags.Ephemeral });
-    const match = /^ranked-page:(\d{1,20}):(Previous|Next):(\d+)$/.exec(button.customId);
+    const match = /^ranked-page:(\d{1,20}):(Previous|Next|Details|Summary):(\d+)$/.exec(button.customId);
     if (!match) return reply(REFRESH);
     const [, id, , target] = match;
     let report;

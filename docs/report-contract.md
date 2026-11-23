@@ -67,4 +67,4 @@ Players should see what happened, the counts behind a comparison, and a replay q
 
 The round-equivalent change in the comparison measures the difference from applying the earlier win rate to the latest round count. Treat it internally as a descriptive reference calculation, never as rounds caused or prevented by one player.
 
-The latest-match coach is the first report field when available and contains the RR momentum chart. The Match Log uses two numbered panels. Sample Coverage and Report Legend explain missing values and the units used by the tables.
+The opening page has five fields and a target of fewer than 1,800 characters. The Details button opens the full report within the original reply. The detailed coach retains the RR chart. The Match Log uses two numbered panels. Sample Coverage and Report Legend stay on the details pages.

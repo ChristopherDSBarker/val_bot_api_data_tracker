@@ -51,3 +51,23 @@ test('one-page reports have no paging controls or disk dependency', async () => 
   }, [page]);
   assert.equal(edits, 1);
 });
+
+test('summary opens Details and can return without a second message', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'val-details-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const pager = createProfilePager(dir);
+  const pages = [{ embeds: [{ title: 'Player', fields: [{ name: '📄 Details' }] }] },
+    { embeds: [{ title: 'Ranked Report · Details' }] }];
+  let page;
+  const owner = { id: 'owner' };
+  await pager.sendProfilePages({ id: '87654', user: owner, editReply: async (value) => { page = value; } }, pages);
+  async function press(label) {
+    const button = page.components[0].toJSON().components.find((component) => component.label === label);
+    assert.ok(button);
+    await pager.handleProfilePage({ customId: button.custom_id, user: owner, update: async (value) => { page = value; } });
+  }
+  await press('Details');
+  assert.equal(page.embeds[0].title, 'Ranked Report · Details');
+  await press('Summary');
+  assert.equal(page.embeds[0].title, 'Player');
+});

@@ -4,9 +4,29 @@ Player#NA1
 
 **Gold 3**  ·  41 RR
 
-**At a glance**
-Won **5 of 10** recent Competitive matches with known results. Rank Rating moved **+100** over 5 recorded updates.
-Rank, momentum and the full report follow.
+[🎯 Coach · Latest Match]
+**Won 13–8 on Sunset.**
+Pick one lost round. Check where your nearest teammate was before the first fight.
+
+[📈 Momentum]
++100 Rank Rating over 5 updates, all RR gains.
+
+[🧭 Your Roles]
+Overall: 50% (5 wins in 10 games).
+Duelist: 50% (5 of 10 wins)
+
+[👥 Who You Queued With]
+**Solo**
+5W / 10G (50%)
+
+[📄 Details]
+Open **Details** for the full match log, maps, economy, party stats, and career.
+
+HenrikDev rank and match data · Up to 10 Competitive matches
+
+=== Page 2 ===
+
+Ranked Report · Details
 
 [🎯 Coach · Latest Match]
 **Won 13–8 on Sunset.** · Jett (Duelist)
@@ -119,6 +139,9 @@ Solo · you
 5W / 10G      50%    —
 ```
 
+[Account & Rank Details]
+**Peak Season:** Episode 7, Act 3
+
 [◆ Sample Coverage · 10 matches]
 ```
 Measure       Requirement          Seen
@@ -139,5 +162,3 @@ Career        Beta career data     0/2
 **Rounds/game** Average rounds won minus lost · **RR** Rank Rating
 **Spend / round won** Your spend divided by team rounds won
 **Spent** Credits paid · **T** Trades after your death · **W** Wins
-
-HenrikDev rank and match data · Up to 10 Competitive matches

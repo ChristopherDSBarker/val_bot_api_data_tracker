@@ -4,9 +4,31 @@ Player#NA1
 
 **Gold 3**  ·  41 RR
 
-**At a glance**
-Won **4 of 4** recent Competitive matches with known results. Rank Rating moved **+80** over 4 recorded updates.
-Rank, momentum and the full report follow.
+[🎯 Coach · Latest Match]
+**Won 13–8 on Sunset.**
+On attack, check one first fight. Was a teammate close enough to trade if you fell?
+
+[📈 Momentum]
++80 Rank Rating over 4 updates, all RR gains.
+
+[🧭 Your Roles]
+Overall: 100% (4 wins in 4 games).
+Duelist: 100% (4 of 4 wins)
+
+[👥 Who You Queued With]
+**Five-stack** · BruceBootyLee#OwO, SteviePR#aqnis, Doii112#NA1, ＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡ#UwU
+3W / 3G (100%)
+**Solo**
+1W / 1G (100%)
+
+[📄 Details]
+Open **Details** for the full match log, maps, economy, party stats, and career.
+
+HenrikDev rank and match data · Up to 10 Competitive matches
+
+=== Page 2 ===
+
+Ranked Report · Details
 
 [🎯 Coach · Latest Match]
 **Won 13–8 on Sunset.** · Jett (Duelist)
@@ -122,14 +144,19 @@ Wins / games  Win %  Rounds/game
 
 Five-stack · you + 4
 3W / 3G       100%   —
-  SteviePR#aq… · 6T/3G · K/D 54/36
-  ＡＡＡＡＡ… · 3T/3G · K/D 18/27
-  BruceBootyL… · 3T/3G · K/D 54/36
+  SteviePR#aqnis · 6T/3G · K/D 54/36
+  ＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡＡ
+  Ａ#UwU
+  3T/3G · K/D 18/27
+  BruceBootyLee#OwO · 3T/3G · K/D 54/36
   +1 more
 
 Solo · you
 1W / 1G       100%   —
 ```
+
+[Account & Rank Details]
+**Peak Season:** Episode 7, Act 3
 
 [◆ Sample Coverage · 4 matches]
 ```
@@ -151,5 +178,3 @@ Career        Beta career data     0/2
 **Rounds/game** Average rounds won minus lost · **RR** Rank Rating
 **Spend / round won** Your spend divided by team rounds won
 **Spent** Credits paid · **T** Trades after your death · **W** Wins
-
-HenrikDev rank and match data · Up to 10 Competitive matches

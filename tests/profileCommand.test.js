@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const api = require('../src/services/valorantApi');
 const profile = require('../src/commands/valorantProfile');
+const pager = require('../src/utils/profilePagination');
 
 test('the ranked report shows automatic coaching with only name, tag, and region', async (t) => {
   assert.deepEqual(fs.readdirSync(path.join(__dirname, '../src/commands')).filter((name) => name.endsWith('.js')),
@@ -21,17 +22,18 @@ test('the ranked report shows automatic coaching with only name, tag, and region
   t.mock.method(api, 'getRecentMatches', async () => [match]);
   t.mock.method(api, 'isExperimentalValorantPipelineEnabled', () => false);
   let message;
+  t.mock.method(pager, 'sendProfilePages', async (_interaction, pages) => { message = pages; });
   await profile.execute({
     options: { getString: (key) => ({ name: 'Test', tag: 'NA1', region: 'na' })[key] ?? null },
     deferReply: async () => {},
     editReply: async (value) => { message = value; },
   });
-  const fields = message.embeds[0].fields;
+  const fields = message.flatMap((page) => page.embeds[0].fields);
   assert.match(fields[0].name, /Coach · Latest Match/);
-  assert.match(fields[0].value, /Replay cue/);
+  assert.match(fields[0].value, /Pick one lost round/);
   assert.ok(fields.some((field) => field.name.includes('Match Log · 1 of 2')));
-  assert.ok(fields.some((field) => field.value.includes('Duelist 0/1')));
-  assert.equal(message.files, undefined);
+  assert.ok(fields.some((field) => field.value.includes('Duelist: 0%')));
+  assert.ok(message.every((page) => !page.files));
 
 });
 
@@ -67,15 +69,19 @@ test('profile includes saved party results by default, and renders if the store 
       partyKnown: true, party: i < 5 ? [partner] : [],
     }));
   });
+  const fields = [];
+  t.mock.method(pager, 'sendProfilePages', async (_interaction, pages) => {
+    fields.push(...pages.flatMap((page) => page.embeds[0].fields));
+  });
   async function run() {
-    const fields = [];
+    fields.length = 0;
     const capture = async (page) => { fields.push(...page.embeds[0].fields); };
     await profile.execute({
       guildId: 'guild',
       options: { getString: (key) => ({ name: 'Test', tag: 'NA1', region: 'na' })[key] ?? null },
       deferReply: async () => {}, editReply: capture, followUp: capture,
     });
-    return fields;
+    return [...fields];
   }
 
   const withHistory = await run();
@@ -104,13 +110,14 @@ test('mock mode answers without an API key or a network call', async (t) => {
     throw new Error('unexpected network call');
   });
   let reply;
+  t.mock.method(pager, 'sendProfilePages', async (_interaction, pages) => { reply = pages; });
   await profile.execute({
     options: { getString: (key) => ({ name: 'Test', tag: 'NA1', region: 'na' })[key] ?? null },
     deferReply: async () => {}, editReply: async (value) => { reply = value; },
   });
   assert.equal(network.mock.callCount(), 0);
-  assert.match(reply.embeds[0].author.name, /EXAMPLE REPORT/);
-  assert.ok(reply.embeds[0].fields.some(({ name }) => name.includes('Match Log · 1 of 2')));
+  assert.match(reply[0].embeds[0].author.name, /EXAMPLE REPORT/);
+  assert.ok(reply.slice(1).some((page) => page.embeds[0].fields.some(({ name }) => name.includes('Match Log · 1 of 2'))));
 });
 
 test('complete API failure yields one plain-language error reply', async (t) => {

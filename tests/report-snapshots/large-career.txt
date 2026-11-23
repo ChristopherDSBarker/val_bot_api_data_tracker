@@ -4,9 +4,29 @@ Player#NA1
 
 **Gold 3**  ·  41 RR
 
-**At a glance**
-Won **5 of 10** recent Competitive matches with known results. Rank Rating moved **+100** over 5 recorded updates.
-Rank, momentum and the full report follow.
+[🎯 Coach · Latest Match]
+**Won 13–8 on Sunset.**
+On attack, check one first fight. Was a teammate close enough to trade if you fell?
+
+[📈 Momentum]
++100 Rank Rating over 5 updates, all RR gains.
+
+[🧭 Your Roles]
+Overall: 50% (5 wins in 10 games).
+Duelist: 50% (5 of 10 wins)
+
+[👥 Who You Queued With]
+**Trio** · BruceBootyLee#OwO, SteviePR#aqnis
+5W / 10G (50%)
+
+[📄 Details]
+Open **Details** for the full match log, maps, economy, party stats, and career.
+
+HenrikDev rank and match data · Up to 10 Competitive matches
+
+=== Page 2 ===
+
+Ranked Report · Details
 
 [🎯 Coach · Latest Match]
 **Won 13–8 on Sunset.** · Jett (Duelist)
@@ -189,12 +209,6 @@ Values are rounds won / played. Δ pts = change in win percentage.
 10 L 8-13  Sunset        Jett
 ```
 
-HenrikDev rank and match data · Up to 10 Competitive matches
-
-=== Page 2 ===
-
-Ranked Report · Continued
-
 [▤ Match Log · 2 of 2]
 ```
 #  K/D/A      ACS   Perf     RR
@@ -210,6 +224,10 @@ Ranked Report · Continued
 10 18/12/4    —     242.0    -18
 ```
 Match numbers link both panels, newest first.
+
+=== Page 3 ===
+
+Ranked Report · Continued
 
 [RR After Wins and Losses]
 ```
@@ -229,9 +247,12 @@ Wins / games  Win %  Rounds/game
 
 Trio · you + 2
 5W / 10G      50%    —
-  BruceBootyL… · T — · K/D —
-  SteviePR#aq… · T — · K/D —
+  BruceBootyLee#OwO · T — · K/D —
+  SteviePR#aqnis · T — · K/D —
 ```
+
+[Account & Rank Details]
+**Peak Season:** Episode 7, Act 3
 
 [◆ Sample Coverage · 10 matches]
 ```

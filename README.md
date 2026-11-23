@@ -1,6 +1,6 @@
 # VALORANT Ranked Report + Coach for Discord
 
-Run `/valorant-profile` to see how your recent ranked games went, who you queued with, and which situations are worth reviewing. One card opens with a plain-English recap and gives you the match and round counts behind it.
+Run `/valorant-profile` to see how your recent ranked games went, who you queued with, and which situations are worth reviewing. The reply opens with a short coach summary. Select **Details** in the same message for the match and round counts behind it.
 
 ## Run the bot
 
@@ -56,7 +56,7 @@ The card shows headshots as a share of **recorded hits**. It shows damage delta 
 - For a mock profile, set `USE_MOCK_DATA=true`. Discord credentials are still required for Discord login.
 - Run the local regression suite with `npm test`. The tests run without a Discord login or API key. On GitHub, the clean-install workflow runs `npm ci` and `npm test` on pushes and pull requests.
 
-If a report needs more space, use **Previous** and **Next** to read all pages in the same Discord reply. The requester can switch pages for seven days, including after a restart if the bot keeps its local `data/report-pages/` directory. Older cards created before this update need a fresh lookup. Party comparisons appear inside **Who You Queued With**. The experimental pipeline defaults to enabled and can be disabled with the startup command above.
+Open **Details** from the summary, then use **Previous** and **Next** when the details span more pages. Use **Summary** to return to the first page. The requester can switch pages for seven days, including after a restart if the bot keeps its local `data/report-pages/` directory. Older cards created before this update need a fresh lookup. Party comparisons appear inside **Who You Queued With**. The experimental pipeline defaults to enabled and can be disabled with the startup command above.
 
 ## Data coverage
 
@@ -82,4 +82,4 @@ The Coach section separates **your first kills per known opening** from **team r
 
 See the [report contract and release checklist](docs/report-contract.md) for the card’s units, sample gates, and verification steps.
 
-The coach is the first section when the latest match has a known result. **Sample Coverage** explains which records are available, and **Report Legend** defines the table labels. Use `/status` for a private health check showing API cache entries, saved server match count, last API status, and the source revision when available.
+The opening card shows the latest-match cue, Rank Rating momentum, role results, and recent party lineups. The details pages contain **Sample Coverage**, the label definitions, and all report tables. Use `/status` for a private health check showing API cache entries, saved server match count, last API status, and the source revision when available.

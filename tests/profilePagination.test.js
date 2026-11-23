@@ -1,42 +1,53 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { EventEmitter } = require('node:events');
-const { sendProfilePages } = require('../src/utils/profilePagination');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const os = require('node:os');
+const { createProfilePager } = require('../src/utils/profilePagination');
 
-test('overflow pages update the original Discord reply and never send a second report', async () => {
-  const collector = new EventEmitter();
-  const edits = [];
-  const updates = [];
-  const interaction = {
-    user: { id: 'requester' },
-    editReply: async (payload) => {
-      edits.push(payload);
-      return { createMessageComponentCollector: () => collector };
-    },
-    followUp: () => assert.fail('A continuation must not send a second message'),
-  };
-  const first = { embeds: [{ title: 'Ranked Report' }] };
-  const second = { embeds: [{ title: 'Teammates' }] };
-
-  await sendProfilePages(interaction, [first, second]);
-  assert.equal(edits.length, 1);
-  const buttons = edits[0].components[0].toJSON().components;
-  assert.equal(buttons[2].label, 'Next');
-  collector.emit('collect', {
-    customId: buttons[2].custom_id, user: interaction.user,
-    update: async (payload) => { updates.push(payload); },
+test('report buttons survive a restart and update only the original message', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'val-pages-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  let now = Date.now();
+  const pager = () => createProfilePager(dir, () => now);
+  const pages = [{ embeds: [{ title: 'Ranked Report' }] }, { embeds: [{ title: 'Teammates' }] }];
+  let posted;
+  await pager().sendProfilePages({
+    id: '12345', user: { id: 'owner' },
+    editReply: async (payload) => { posted = payload; },
+    followUp: () => assert.fail('Unexpected second message'),
+  }, pages);
+  const next = posted.components[0].toJSON().components[2].custom_id;
+  const handle = pager().handleProfilePage;
+  now += 60 * 60 * 1000;
+  let current;
+  let notices = [];
+  const click = (customId, userId) => handle({
+    customId, user: { id: userId },
+    update: async (payload) => { current = payload; },
+    reply: async ({ content }) => { notices.push(content); },
   });
-  await new Promise(setImmediate);
-  assert.equal(updates[0].embeds[0].title, 'Teammates');
-  assert.equal(edits.length, 1);
-  collector.emit('end');
-  await new Promise(setImmediate);
-  assert.ok(edits.at(-1).components[0].toJSON().components.every((button) => button.disabled));
+  await click(next, 'guest');
+  assert.equal(current, undefined);
+  assert.match(notices.at(-1), /your own report/);
+  await click(next, 'owner');
+  assert.equal(current.embeds[0].title, 'Teammates');
+  const previous = current.components[0].toJSON().components[0].custom_id;
+  await click(previous, 'owner');
+  assert.equal(current.embeds[0].title, 'Ranked Report');
+
+  now += 7 * 24 * 60 * 60 * 1000;
+  await click(next, 'owner');
+  assert.match(notices.at(-1), /no longer available/);
+  await click('ranked-page:1', 'owner');
+  assert.match(notices.at(-1), /fresh report/);
 });
 
-test('a report that fits gets one reply without page controls', async () => {
+test('one-page reports have no paging controls or disk dependency', async () => {
   const page = { embeds: [{ title: 'Ranked Report' }] };
   let edits = 0;
-  await sendProfilePages({ editReply: async (payload) => { edits++; assert.equal(payload, page); } }, [page]);
+  await createProfilePager('/does-not-exist').sendProfilePages({
+    editReply: async (payload) => { edits++; assert.equal(payload, page); },
+  }, [page]);
   assert.equal(edits, 1);
 });

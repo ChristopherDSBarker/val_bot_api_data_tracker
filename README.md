@@ -56,7 +56,7 @@ The card shows headshots as a share of **recorded hits**. It shows damage delta 
 - For a mock profile, set `USE_MOCK_DATA=true`. Discord credentials are still required for Discord login.
 - Run the local regression suite with `npm test`. The tests run without a Discord login or API key. On GitHub, the clean-install workflow runs `npm ci` and `npm test` on pushes and pull requests.
 
-If a report needs more space, use **Previous** and **Next** to read all pages in the same Discord reply. The controls are available to the requester for five minutes. Party comparisons appear inside **How You Played Together**. The experimental pipeline defaults to enabled and can be disabled with the startup command above.
+If a report needs more space, use **Previous** and **Next** to read all pages in the same Discord reply. The requester can switch pages for seven days, including after a restart if the bot keeps its local `data/report-pages/` directory. Older cards created before this update need a fresh lookup. Party comparisons appear inside **How You Played Together**. The experimental pipeline defaults to enabled and can be disabled with the startup command above.
 
 ## Data coverage
 

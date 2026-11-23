@@ -67,8 +67,18 @@ client.once('ready', () => {
   console.log('\n[BOT] Bot is ready to use!\n');
 });
 
+const { isProfilePage, handleProfilePage } = require('./utils/profilePagination');
+
 // Handle interactions (slash commands)
 client.on('interactionCreate', async (interaction) => {
+  if (isProfilePage(interaction)) {
+    try {
+      await handleProfilePage(interaction);
+    } catch (error) {
+      console.warn('[PROFILE] Page change failed:', error.code || error.name);
+    }
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
